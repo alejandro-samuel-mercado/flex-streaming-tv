@@ -1,0 +1,50 @@
+{
+  "expo": {
+    "name": "Nuba TV",
+    "slug": "nuba-tv",
+    "version": "1.0.0",
+    "orientation": "landscape",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "dark",
+    "splash": {
+      "image": "./assets/splash.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#030612"
+    },
+    "ios": {
+      "supportsTablet": false,
+      "bundleIdentifier": "com.nuba.tv"
+    },
+    "android": {
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/adaptive-icon.png",
+        "backgroundColor": "#030612"
+      },
+      "package": "com.nuba.tv",
+      "intentFilters": [
+        {
+          "action": "android.intent.action.MAIN",
+          "category": [
+            "android.intent.category.LEANBACK_LAUNCHER"
+          ]
+        }
+      ],
+      "isTV": true,
+      "versionCode": 1
+    },
+    "plugins": [
+      "expo-router",
+      "expo-font",
+      [
+        "expo-screen-orientation",
+        {
+          "initialOrientation": "LANDSCAPE"
+        }
+      ]
+    ],
+    "experiments": {
+      "typedRoutes": true
+    },
+    "scheme": "nubatv"
+  }
+}
