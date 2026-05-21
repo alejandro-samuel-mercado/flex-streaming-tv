@@ -1,230 +1,273 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { View, Text, StyleSheet, FlatList, ActivityIndicator, Dimensions } from 'react-native';
-import { History, User, LogIn } from 'lucide-react-native';
+import {
+    View, Text, StyleSheet, FlatList, ActivityIndicator, Pressable, Dimensions,
+} from 'react-native';
+import { History, Play, Trash2 } from 'lucide-react-native';
 import { useRouter } from 'expo-router';
-import Animated, { FadeIn, FadeInDown } from 'react-native-reanimated';
-import { Colors } from '../../theme/colors';
-import { TV } from '../../theme/tv';
-import TVFilmCard from '../../components/tv/TVFilmCard';
-import TVFocusable from '../../components/tv/TVFocusable';
-import { fetchApi } from '../../lib/api-client';
-import { API_ROUTES } from '../../lib/api-routes';
-import { useAuth } from '../../context/AuthContext';
+// react-native-reanimated imports removed for TV stability
 import TVCosmicBackground from '../../components/tv/TVCosmicBackground';
+import { Image } from 'expo-image';
+import { LinearGradient } from 'expo-linear-gradient';
+import { Colors } from '../../theme/colors';
+import { fetchApi } from '../../lib/api-client';
+import { API_ROUTES, resolveImageUrl } from '../../lib/api-routes';
+import { useAuth } from '../../context/AuthContext';
+import { scale } from '../../lib/scale';
+import { useDoubleBackExit } from '../../hooks/useDoubleBackExit';
 
-const TVFocusGuide = (require('react-native') as any).TVFocusGuideView ?? View;
-const { width: SW } = Dimensions.get('window');
-const COLUMNS = 6;
-const GAP = 24;
-const CARD_WIDTH = (SW - 144 - (GAP * (COLUMNS - 1))) / COLUMNS;
+const { width: SW, height: SH } = Dimensions.get('window');
+const COLS = 5;
+const GAP = scale(20);
+const SIDE = scale(80);
+const CARD_W = (SW - SIDE * 2 - GAP * (COLS - 1)) / COLS;
+const CARD_H = CARD_W * 1.5; // poster ratio
 
-export default function HistoryScreen() {
-  const { user } = useAuth();
-  const router = useRouter();
-  const [data, setData] = useState<any[]>([]);
-  const [loading, setLoading] = useState(true);
+// ─── History Card ─────────────────────────────────────────────────────────────
+function HistoryCard({
+    item, index, onPlay, onRemove,
+}: {
+    item: any; index: number;
+    onPlay: () => void;
+    onRemove: () => void;
+}) {
+    const [playFocused, setPlayFocused] = useState(false);
+    const [removeFocused, setRemoveFocused] = useState(false);
+    const c = item.content || {};
+    const backdrop = c.thumbnails?.find((t: any) => t.type === 'POSTER')?.url
+        || c.thumbnails?.find((t: any) => t.type === 'BACKDROP')?.url
+        || c.thumbnails?.find((t: any) => t.type === 'BANNER')?.url
+        || c.thumbnails?.[0]?.url;
+    const title = c.translations?.[0]?.title || '';
+    const progress = item.progressSeconds || 0;
+    const duration = item.durationSeconds || 0;
+    const progressPct = duration > 0 ? Math.min((progress / duration) * 100, 100) : 0;
 
-  const loadData = useCallback(async () => {
-    if (!user) { setLoading(false); return; }
-    try {
-      const res = await fetchApi(`${API_ROUTES.HISTORY.LIST}?limit=30`);
-      if (res.success && res.data) {
-        setData(res.data.data || res.data.items || res.data || []);
-      }
-    } catch (e) {
-      console.error(e);
-    } finally {
-      setLoading(false);
-    }
-  }, [user]);
-
-  useEffect(() => {
-    loadData();
-  }, [loadData]);
-
-  const renderItem = ({ item, index }: { item: any; index: number }) => {
-    const c = item.content;
-    if (!c) return null;
-    const backdrop = c.thumbnails?.find((t: any) => t.type === 'BACKDROP')?.url;
-    const poster = c.thumbnails?.find((t: any) => t.type === 'POSTER')?.url;
     return (
-      <View style={[s.cardWrapper, { width: CARD_WIDTH }]}>
-        <TVFilmCard
-          id={c.id}
-          title={c.translations?.[0]?.title}
-          backdropUrl={backdrop}
-          posterUrl={poster}
-          progress={item.progressSeconds}
-          duration={item.durationSeconds}
-          type={c.type}
-          hasTVPreferredFocus={index === 0}
-          width={CARD_WIDTH}
-          onPress={() => {
-            if (item.episodeId) {
-              router.push({
-                pathname: `/(tv)/watch/${c.id}` as any,
-                params: { episodeId: item.episodeId }
-              });
-            } else {
-              router.push(`/(tv)/watch/${c.id}` as any);
-            }
-          }}
-        />
-      </View>
+        <View style={{ width: CARD_W, gap: scale(8) }}>
+            <Pressable
+                focusable
+                hasTVPreferredFocus={index === 0}
+                onFocus={() => setPlayFocused(true)}
+                onBlur={() => setPlayFocused(false)}
+                onPress={onPlay}
+                style={[s.card, { width: CARD_W, height: CARD_H }, playFocused && s.cardFocused]}
+            >
+                {backdrop ? (
+                    <Image
+                        source={resolveImageUrl(backdrop)}
+                        style={StyleSheet.absoluteFill}
+                        contentFit="cover"
+                    />
+                ) : (
+                    <View style={[StyleSheet.absoluteFill, { backgroundColor: '#1a1c22', justifyContent: 'center', alignItems: 'center' }]}>
+                        <Play size={scale(28)} color="rgba(255,255,255,0.15)" fill="rgba(255,255,255,0.15)" />
+                    </View>
+                )}
+
+                <LinearGradient
+                    colors={['rgba(0,0,0,0)', 'rgba(0,0,0,0.85)']}
+                    style={[StyleSheet.absoluteFill, s.cardGradient]}
+                />
+                <Text style={s.cardTitle} numberOfLines={1}>{title}</Text>
+
+                {/* Progress bar */}
+                {progressPct > 0 && (
+                    <View style={s.progressBar}>
+                        <View style={[s.progressFill, { width: `${progressPct}%` as any }]} />
+                    </View>
+                )}
+            </Pressable>
+
+            <Pressable
+                focusable
+                onFocus={() => setRemoveFocused(true)}
+                onBlur={() => setRemoveFocused(false)}
+                onPress={onRemove}
+                style={[s.removeBtn, removeFocused && s.removeBtnFocused]}
+            >
+                <Trash2 size={scale(14)} color={removeFocused ? '#FFF' : '#EF4444'} />
+                <Text style={[s.removeBtnText, removeFocused && s.removeBtnTextFocused]}>Quitar</Text>
+            </Pressable>
+        </View>
     );
-  };
+}
 
-  return (
-    <View style={s.container}>
-      <TVCosmicBackground />
+// ─── Main Screen ─────────────────────────────────────────────────────────────
+export default function HistoryScreen() {
+    const { user } = useAuth();
+    const router = useRouter();
+    
+    useDoubleBackExit();
+    const [data, setData] = useState<any[]>([]);
+    const [loading, setLoading] = useState(true);
 
-      <View style={s.contentWrapper}>
-        <Animated.View entering={FadeIn.duration(600)} style={s.header}>
-          <History size={36} color={Colors.accent} strokeWidth={2.5} />
-          <Text style={s.title}>Continuar Viendo</Text>
-          {user && data.length > 0 && (
-            <View style={s.countBadge}>
-              <Text style={s.countBadgeText}>{data.length} título{data.length !== 1 ? 's' : ''}</Text>
+    const loadData = useCallback(async () => {
+        if (!user) { setLoading(false); return; }
+        try {
+            const res = await fetchApi(`${API_ROUTES.HISTORY.LIST}?limit=30`);
+            if (res.success && res.data) {
+                setData(res.data.data || res.data.items || res.data || []);
+            }
+        } catch (e) {
+            console.error(e);
+        } finally {
+            setLoading(false);
+        }
+    }, [user]);
+
+    useEffect(() => { loadData(); }, [loadData]);
+
+    const handlePlay = useCallback((item: any) => {
+        const c = item.content || {};
+        if (item.episodeId) {
+            router.push({ pathname: `/(tv)/watch/${c.id}` as any, params: { episodeId: item.episodeId } });
+        } else {
+            router.push(`/(tv)/watch/${c.id}` as any);
+        }
+    }, [router]);
+
+    const handleRemove = useCallback(async (item: any) => {
+        const c = item.content || {};
+        // Optimistic remove
+        setData(prev => prev.filter(i => (i.content?.id || i.id) !== c.id));
+        try {
+            await fetchApi(`${API_ROUTES.HISTORY.BASE}/${c.id}`, { method: 'DELETE' });
+        } catch (e) {
+            console.error(e);
+            loadData(); // restore on error
+        }
+    }, [loadData]);
+
+    if (!user) {
+        return (
+            <View style={s.root}>
+                <TVCosmicBackground />
+                <View style={s.center}>
+                    <History size={scale(64)} color="rgba(255,255,255,0.15)" />
+                    <Text style={s.emptyTitle}>Inicia sesión</Text>
+                    <Text style={s.emptySubtitle}>Accede para ver tu historial de reproducción.</Text>
+                </View>
             </View>
-          )}
-        </Animated.View>
+        );
+    }
 
-        {!user ? (
-          <View style={s.center}>
-            <Animated.View entering={FadeInDown.duration(600)} style={s.emptyCard}>
-              <User size={64} color="rgba(255,255,255,0.15)" style={{ marginBottom: 20 }} />
-              <Text style={s.emptyTitle}>Inicia sesión</Text>
-              <Text style={s.emptySubtitle}>Debes estar conectado para poder registrar tu progreso de visualización y continuar tus películas o episodios donde los dejaste.</Text>
-              
-              <TVFocusable 
-                style={s.loginBtn} 
-                hasTVPreferredFocus 
-                onPress={() => router.push('/(auth)/login')}
-                focusBorderRadius={16}
-              >
-                <LogIn size={20} color={Colors.black} strokeWidth={2.5} />
-                <Text style={s.loginBtnText}>CONECTARSE</Text>
-              </TVFocusable>
-            </Animated.View>
-          </View>
-        ) : loading ? (
-          <View style={s.center}>
-            <ActivityIndicator size="large" color={Colors.accent} />
-          </View>
-        ) : data.length > 0 ? (
-          <FlatList
-            data={data}
-            renderItem={renderItem}
-            keyExtractor={(item) => item.id}
-            numColumns={COLUMNS}
-            key={`grid-${COLUMNS}`}
-            showsVerticalScrollIndicator={false}
-            contentContainerStyle={s.grid}
-            columnWrapperStyle={s.row}
-          />
-        ) : (
-          <View style={s.center}>
-            <Animated.View entering={FadeInDown.duration(600)} style={s.emptyCard}>
-              <History size={64} color="rgba(255,255,255,0.15)" style={{ marginBottom: 20 }} />
-              <Text style={s.emptyTitle}>Sin historial</Text>
-              <Text style={s.emptySubtitle}>Tu historial de reproducción aparecerá aquí cuando comiences a ver cualquier película o serie en la plataforma.</Text>
-            </Animated.View>
-          </View>
-        )}
-      </View>
-    </View>
-  );
+    return (
+        <View style={s.root}>
+            <TVCosmicBackground />
+
+            <View style={s.container}>
+                {/* Header */}
+                <View style={s.header}>
+                    <History size={scale(28)} color={Colors.accent} strokeWidth={2.5} />
+                    <Text style={s.title}>Continuar Viendo</Text>
+                    {data.length > 0 && (
+                        <View style={s.badge}>
+                            <Text style={s.badgeText}>{data.length} título{data.length !== 1 ? 's' : ''}</Text>
+                        </View>
+                    )}
+                </View>
+
+                {loading ? (
+                    <View style={s.center}>
+                        <ActivityIndicator size="large" color={Colors.accent} />
+                    </View>
+                ) : data.length === 0 ? (
+                    <View style={s.center}>
+                        <Text style={{ fontSize: scale(48) }}>🎬</Text>
+                        <Text style={s.emptyTitle}>Sin historial</Text>
+                        <Text style={s.emptySubtitle}>Las películas y series que veas aparecerán aquí.</Text>
+                    </View>
+                ) : (
+                    <FlatList
+                        data={data}
+                        numColumns={COLS}
+                        keyExtractor={(item, i) => (item.content?.id || item.id || i.toString())}
+                        contentContainerStyle={s.grid}
+                        columnWrapperStyle={s.row}
+                        showsVerticalScrollIndicator={false}
+                        renderItem={({ item, index }) => (
+                            <HistoryCard
+                                item={item}
+                                index={index}
+                                onPlay={() => handlePlay(item)}
+                                onRemove={() => handleRemove(item)}
+                            />
+                        )}
+                    />
+                )}
+            </View>
+        </View>
+    );
 }
 
 const s = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: '#02040A',
-  },
-  contentWrapper: {
-    flex: 1,
-    paddingTop: 140, // Consistent with header offsets
-    paddingHorizontal: 72,
-  },
-  header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 16,
-    marginBottom: 40,
-  },
-  title: {
-    fontSize: 52,
-    fontWeight: '900',
-    color: Colors.white,
-    letterSpacing: -1,
-  },
-  countBadge: {
-    backgroundColor: 'rgba(255,255,255,0.06)',
-    paddingHorizontal: 16,
-    paddingVertical: 6,
-    borderRadius: 12,
-    marginLeft: 12,
-  },
-  countBadgeText: {
-    fontSize: 16,
-    fontWeight: '700',
-    color: Colors.textSecondary,
-  },
-  grid: {
-    paddingBottom: 100,
-  },
-  row: {
-    gap: GAP,
-    marginBottom: GAP,
-  },
-  cardWrapper: {
-    marginBottom: GAP,
-  },
-  center: {
-    flex: 0.75,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  emptyCard: {
-    backgroundColor: 'rgba(255,255,255,0.03)',
-    padding: 48,
-    borderRadius: 32,
-    alignItems: 'center',
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.08)',
-    maxWidth: 550,
-  },
-  emptyTitle: {
-    fontSize: 32,
-    fontWeight: '800',
-    color: Colors.white,
-    marginBottom: 12,
-  },
-  emptySubtitle: {
-    fontSize: 18,
-    color: 'rgba(255,255,255,0.5)',
-    textAlign: 'center',
-    lineHeight: 26,
-    marginBottom: 32,
-  },
-  loginBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-    backgroundColor: Colors.white,
-    paddingVertical: 18,
-    paddingHorizontal: 36,
-    borderRadius: 16,
-    shadowColor: Colors.white,
-    shadowOffset: { width: 0, height: 6 },
-    shadowOpacity: 0.2,
-    shadowRadius: 16,
-    elevation: 8,
-  },
-  loginBtnText: {
-    fontSize: 16,
-    fontWeight: '900',
-    color: Colors.black,
-    letterSpacing: 1.5,
-  },
+    root: { flex: 1, backgroundColor: Colors.bg },
+    container: { flex: 1, paddingTop: scale(110) },
+    header: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: scale(14),
+        paddingHorizontal: SIDE,
+        paddingBottom: scale(20),
+        borderBottomWidth: 1,
+        borderBottomColor: 'rgba(255,255,255,0.06)',
+        marginBottom: scale(10),
+    },
+    title: { fontSize: scale(26), fontWeight: '900', color: Colors.white, letterSpacing: -0.5 },
+    badge: {
+        backgroundColor: 'rgba(0,229,255,0.1)',
+        borderWidth: 1,
+        borderColor: 'rgba(0,229,255,0.2)',
+        paddingHorizontal: scale(14),
+        paddingVertical: scale(5),
+        borderRadius: scale(20),
+    },
+    badgeText: { fontSize: scale(13), fontWeight: '700', color: Colors.accent },
+    grid: { paddingHorizontal: SIDE, paddingVertical: scale(30), paddingBottom: scale(60), gap: GAP },
+    row: { gap: GAP },
+    card: {
+        borderRadius: scale(10), overflow: 'hidden', justifyContent: 'flex-end',
+        borderWidth: 2, borderColor: 'transparent',
+    },
+    cardFocused: {
+        borderColor: Colors.white,
+    },
+    cardGradient: { justifyContent: 'flex-end', padding: scale(10), paddingBottom: scale(18) },
+    cardTitle: {
+        fontSize: scale(13), fontWeight: '700', color: Colors.white,
+    },
+    progressBar: {
+        height: scale(4), backgroundColor: 'rgba(255,255,255,0.2)',
+        borderRadius: scale(2), marginHorizontal: scale(10), marginBottom: scale(10),
+    },
+    progressFill: {
+        height: '100%', backgroundColor: Colors.accent,
+        borderRadius: scale(2),
+    },
+    removeBtn: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'center',
+        gap: scale(6),
+        backgroundColor: 'rgba(239, 68, 68, 0.08)',
+        borderWidth: 1,
+        borderColor: 'rgba(239, 68, 68, 0.2)',
+        paddingVertical: scale(6),
+        borderRadius: scale(8),
+    },
+    removeBtnFocused: {
+        backgroundColor: '#EF4444',
+        borderColor: '#EF4444',
+    },
+    removeBtnText: {
+        fontSize: scale(12),
+        fontWeight: '700',
+        color: '#EF4444',
+    },
+    removeBtnTextFocused: {
+        color: '#FFFFFF',
+    },
+    center: { flex: 1, justifyContent: 'center', alignItems: 'center', gap: scale(16) },
+    emptyTitle: { fontSize: scale(24), fontWeight: '800', color: Colors.white },
+    emptySubtitle: { fontSize: scale(16), color: Colors.textSecondary, textAlign: 'center', maxWidth: scale(400) },
 });

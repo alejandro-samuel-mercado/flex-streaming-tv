@@ -1,32 +1,32 @@
 import React, { useState } from 'react';
 import { View, Text, StyleSheet, Pressable } from 'react-native';
 import { useRouter, usePathname, useGlobalSearchParams } from 'expo-router';
-import Animated, { useAnimatedStyle, withTiming, useSharedValue } from 'react-native-reanimated';
-import { Search, Settings, User, History } from 'lucide-react-native';
+import Animated from 'react-native-reanimated';
+import { Search, User, Heart } from 'lucide-react-native';
 import { Colors } from '../../theme/colors';
 import { Image } from 'expo-image';
 import { useAuth } from '../../context/AuthContext';
+import { scale } from '../../lib/scale';
 
 const NAV_ITEMS = [
     { key: 'home', label: 'Inicio', route: '/(tv)/home' },
     { key: 'movies', label: 'Películas', route: '/(tv)/explore?type=MOVIE' },
     { key: 'series', label: 'Series', route: '/(tv)/explore?type=SERIES' },
     { key: 'explore', label: 'Explorar', route: '/(tv)/explore' },
-    { key: 'favorites', label: 'Mi Lista', route: '/(tv)/favorites', requiresAuth: true },
 ];
 
 export default function TVTopNav() {
     const router = useRouter();
     const pathname = usePathname();
     const { user } = useAuth(); // Hook de autenticación
-    
+
     // CRITICAL FIX: useGlobalSearchParams must be used inside Layout components like TVTopNav
     // useLocalSearchParams will be empty here because the nav is rendered at the _layout level!
     const params = useGlobalSearchParams();
 
     const getIsActive = (item: typeof NAV_ITEMS[0]) => {
         const isExplorePath = pathname === '/(tv)/explore' || pathname === '/explore';
-        
+
         if (item.key === 'home') return pathname === '/(tv)/home' || pathname === '/home' || pathname === '/';
         if (item.key === 'movies') return isExplorePath && params.type === 'MOVIE';
         if (item.key === 'series') return isExplorePath && params.type === 'SERIES';
@@ -43,12 +43,9 @@ export default function TVTopNav() {
                 <Image source={require('../../assets/logo.png')} style={s.logoImage} contentFit="contain" />
             </View>
 
-            {/* Center Nav Items: Standard TV Menu Options */}
+            {/* Center Nav Items: Isla Flotante */}
             <View style={s.centerNav}>
                 {NAV_ITEMS.map((item) => {
-                    // Ocultar tabs que requieren login si no hay usuario
-                    if (item.requiresAuth && !user) return null;
-                    
                     const active = getIsActive(item);
                     return (
                         <NavPill
@@ -59,12 +56,9 @@ export default function TVTopNav() {
                         />
                     );
                 })}
-            </View>
 
-            {/* Right Area: Utility Icons and Profile Avatar */}
-            <View style={s.rightArea}>
-                <TopNavIconButton 
-                    icon={Search} 
+                <TopNavIconButton
+                    icon={Search}
                     onPress={() => {
                         const isExplorePath = pathname === '/(tv)/explore' || pathname === '/explore';
                         if (isExplorePath) {
@@ -78,16 +72,24 @@ export default function TVTopNav() {
                                 params: { focusSearch: Date.now().toString() }
                             });
                         }
-                    }} 
+                    }}
                 />
-                
-                {/* Historial solo visible si el usuario inició sesión */}
+            </View>
+
+            {/* Right Area: Utility Icons and Profile Avatar */}
+            <View style={s.rightArea}>
+
+                {/* Favoritos (Mi Lista) usando Heart */}
                 {user && (
-                    <TopNavIconButton icon={History} onPress={() => router.push('/(tv)/history')} />
+                    <TopNavIconButton 
+                        icon={Heart} 
+                        onPress={() => router.push('/(tv)/favorites')} 
+                        isActive={pathname.includes('/favorites')} 
+                    />
                 )}
-                
-                {/* Profile avatar on the far right is the standard convention */}
-                <TopNavIconButton icon={User} onPress={() => router.push('/(tv)/profile')} isAvatar />
+
+                {/* Profile avatar on the far right using Dicebear bottts */}
+                <TopNavIconButton icon={User} onPress={() => router.push('/(tv)/profile')} isAvatar user={user} />
             </View>
         </View>
     );
@@ -99,7 +101,6 @@ function NavPill({ label, isActive, onPress }: { label: string; isActive: boolea
     return (
         <Pressable
             focusable
-            hasTVPreferredFocus={isActive}
             onFocus={() => setFocused(true)}
             onBlur={() => setFocused(false)}
             onPress={onPress}
@@ -120,17 +121,15 @@ function NavPill({ label, isActive, onPress }: { label: string; isActive: boolea
     );
 }
 
-function TopNavIconButton({ icon: Icon, onPress, isAvatar }: any) {
+function TopNavIconButton({ icon: Icon, onPress, isAvatar, user, isActive }: any) {
     const [focused, setFocused] = useState(false);
-    const scale = useSharedValue(1);
-    const animStyle = useAnimatedStyle(() => ({ transform: [{ scale: scale.value }] }));
 
     return (
-        <Animated.View style={animStyle}>
+        <View style={focused ? { transform: [{ scale: 1.1 }] } : undefined}>
             <Pressable
                 focusable
-                onFocus={() => { setFocused(true); scale.value = withTiming(1.1, { duration: 150 }); }}
-                onBlur={() => { setFocused(false); scale.value = withTiming(1, { duration: 150 }); }}
+                onFocus={() => setFocused(true)}
+                onBlur={() => setFocused(false)}
                 onPress={onPress}
                 style={[
                     s.iconBtn, 
@@ -139,9 +138,20 @@ function TopNavIconButton({ icon: Icon, onPress, isAvatar }: any) {
                     isAvatar && focused && s.avatarBtnFocused
                 ]}
             >
-                <Icon size={20} color={focused || isAvatar ? Colors.black : Colors.white} />
+                {isAvatar && user ? (
+                    <Image 
+                        source={{ uri: `https://api.dicebear.com/7.x/bottts/png?seed=${user.id || 'default'}&backgroundColor=e5e7eb` }} 
+                        style={{ width: '100%', height: '100%', borderRadius: scale(25) }} 
+                    />
+                ) : (
+                    <Icon 
+                        size={scale(24)} 
+                        color={focused || isAvatar ? Colors.black : Colors.white} 
+                        fill={isActive ? (focused ? Colors.black : Colors.white) : 'transparent'}
+                    />
+                )}
             </Pressable>
-        </Animated.View>
+        </View>
     );
 }
 
@@ -169,7 +179,11 @@ const s = StyleSheet.create({
     centerNav: {
         flexDirection: 'row',
         alignItems: 'center',
-        gap: 8,
+        backgroundColor: 'rgba(255,255,255,0.1)', // Fondo de Isla Flotante
+        paddingHorizontal: scale(12),
+        paddingVertical: scale(8),
+        borderRadius: scale(40),
+        gap: scale(8),
     },
     rightArea: {
         width: 200,
@@ -206,9 +220,9 @@ const s = StyleSheet.create({
         color: '#FFFFFF',
     },
     iconBtn: {
-        width: 44,
-        height: 44,
-        borderRadius: 22,
+        width: scale(50),
+        height: scale(50),
+        borderRadius: scale(25),
         justifyContent: 'center',
         alignItems: 'center',
         backgroundColor: 'rgba(255,255,255,0.0)',

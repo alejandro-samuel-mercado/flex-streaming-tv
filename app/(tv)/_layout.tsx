@@ -49,7 +49,14 @@ export default function TVLayout() {
           <Stack.Screen name="home" />
           <Stack.Screen name="explore" />
           <Stack.Screen name="search" />
-          <Stack.Screen name="favorites" />
+          <Stack.Screen
+            name="favorites"
+            options={{
+              presentation: 'transparentModal',
+              animation: 'fade',
+              contentStyle: { backgroundColor: 'transparent' },
+            }}
+          />
           <Stack.Screen name="history" />
           <Stack.Screen name="profile" />
           <Stack.Screen name="film/[id]" />
@@ -58,7 +65,7 @@ export default function TVLayout() {
       </View>
 
       {/* Top Nav overlay */}
-      <TVTopNav />
+      {!!pathname && !pathname.startsWith('/watch') && <TVTopNav />}
     </View>
   );
 }

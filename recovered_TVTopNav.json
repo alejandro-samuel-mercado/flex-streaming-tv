@@ -1,0 +1,2 @@
+[{"AllowMultiple":false,"EndLine":130,"ReplacementContent":"            {/* Right: Favorites & User */}\n            <View style={s.rightArea}>\n                <IconBtn onPress={() => router.push('/(tv)/favorites')}>\n                    <Heart\n         
+<truncated 5183 bytes>

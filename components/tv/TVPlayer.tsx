@@ -1,536 +1,875 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { View, Text, StyleSheet, Pressable, BackHandler, ActivityIndicator, Platform } from 'react-native';
-import { Video, ResizeMode, AVPlaybackStatus } from 'expo-av';
+import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
+import { View, Text, StyleSheet, Pressable, BackHandler, ActivityIndicator, Platform, FlatList, ScrollView } from 'react-native';
+import Video, { VideoRef, SelectedTrackType, TextTrackType } from 'react-native-video';
 import { LinearGradient } from 'expo-linear-gradient';
 import Animated, { useSharedValue, useAnimatedStyle, withTiming, runOnJS } from 'react-native-reanimated';
-import { Play, Pause, SkipBack, SkipForward, AlertCircle } from 'lucide-react-native';
+import { Play, Pause, RotateCcw, RotateCw, SkipForward, SkipBack, AlertCircle, List, MessageSquare, Languages, X, Check } from 'lucide-react-native';
 import { useRouter } from 'expo-router';
 import { Colors } from '../../theme/colors';
 import { TV } from '../../theme/tv';
 import { fetchApi } from '../../lib/api-client';
 import { API_ROUTES, API_ORIGIN } from '../../lib/api-routes';
+import { scale } from '../../lib/scale';
 
-interface TVPlayerProps {
-  contentId: string;
-  episodeId?: string;
-  videoUrl: string;
-  title: string;
-  subtitle?: string;
-  startPosition?: number;
+// Human-readable language labels (ISO 639-1/2 → Spanish)
+const LANG_LABELS: Record<string, string> = {
+    es: 'Español', spa: 'Español', esp: 'Español',
+    en: 'Inglés', eng: 'Inglés',
+    pt: 'Portugués', por: 'Portugués',
+    fr: 'Francés', fre: 'Francés', fra: 'Francés',
+    de: 'Alemán', ger: 'Alemán', deu: 'Alemán',
+    it: 'Italiano', ita: 'Italiano',
+    ja: 'Japonés', jpn: 'Japonés',
+    ko: 'Coreano', kor: 'Coreano',
+    zh: 'Chino', chi: 'Chino', zho: 'Chino',
+    ru: 'Ruso', rus: 'Ruso',
+    ar: 'Árabe', ara: 'Árabe',
+    hi: 'Hindi', hin: 'Hindi',
+    th: 'Tailandés', tha: 'Tailandés',
+    tr: 'Turco', tur: 'Turco',
+    pl: 'Polaco', pol: 'Polaco',
+    nl: 'Holandés', dut: 'Holandés', nld: 'Holandés',
+    sv: 'Sueco', swe: 'Sueco',
+    da: 'Danés', dan: 'Danés',
+    no: 'Noruego', nor: 'Noruego',
+    fi: 'Finlandés', fin: 'Finlandés',
+    el: 'Griego', gre: 'Griego', ell: 'Griego',
+    he: 'Hebreo', heb: 'Hebreo',
+    id: 'Indonesio', ind: 'Indonesio',
+    ms: 'Malayo', may: 'Malayo', msa: 'Malayo',
+    vi: 'Vietnamita', vie: 'Vietnamita',
+    uk: 'Ucraniano', ukr: 'Ucraniano',
+    ro: 'Rumano', rum: 'Rumano', ron: 'Rumano',
+    cs: 'Checo', cze: 'Checo', ces: 'Checo',
+    und: 'Desconocido',
+};
+
+function getLangLabel(lang?: string, title?: string, name?: string, fallback?: string): string {
+    // If the title is something meaningful (not generic "Track N"), use it
+    if (title && !/^(track|pista|subtitle|audio)\s*\d*$/i.test(title.trim())) {
+        return title;
+    }
+    if (name && !/^(track|pista|subtitle|audio)\s*\d*$/i.test(name.trim())) {
+        return name;
+    }
+    // Try to resolve from language code
+    if (lang) {
+        const code = lang.toLowerCase().trim();
+        if (LANG_LABELS[code]) return LANG_LABELS[code];
+        // Try first 2 chars
+        if (code.length > 2 && LANG_LABELS[code.substring(0, 2)]) return LANG_LABELS[code.substring(0, 2)];
+    }
+    return fallback || lang || 'Desconocido';
 }
 
-export default function TVPlayer({ contentId, episodeId, videoUrl, title, subtitle, startPosition = 0 }: TVPlayerProps) {
-  const router = useRouter();
-  const videoRef = useRef<Video>(null);
-  const webVideoRef = useRef<HTMLVideoElement>(null);
-  
-  // Player state
-  const [status, setStatus] = useState<AVPlaybackStatus | null>(null);
-  const [error, setError] = useState(false);
-  const [loading, setLoading] = useState(true);
-  
-  // OSD (On-Screen Display) State
-  const [osdVisible, setOsdVisible] = useState(true);
-  const osdTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const osdOpacity = useSharedValue(1);
+const TVFocusGuide = (require('react-native') as any).TVFocusGuideView ?? View;
+const TVEvtHandler: any = (require('react-native') as any).TVEventHandler ?? null;
 
-  // Progress tracking
-  const lastSaveTime = useRef(0);
+interface TVPlayerProps {
+    content: any;
+    currentEpisode?: any;
+    streamData?: any;
+    videoUrl: string;
+    title: string;
+    subtitle?: string;
+    startPosition?: number;
+}
 
-  const showOSD = useCallback(() => {
-    setOsdVisible(true);
-    osdOpacity.value = withTiming(1, { duration: 200 });
-    
-    if (osdTimer.current) clearTimeout(osdTimer.current);
-    osdTimer.current = setTimeout(() => {
-      osdOpacity.value = withTiming(0, { duration: 300 }, (finished) => {
-        if (finished) runOnJS(setOsdVisible)(false);
-      });
-    }, TV.playerOSDHideMs);
-  }, []);
+function TVPlaybackButton({ onPress, onFocus, children, style, hasTVPreferredFocus }: any) {
+    const [focused, setFocused] = useState(false);
+    return (
+        <Pressable
+            focusable
+            hasTVPreferredFocus={hasTVPreferredFocus}
+            onFocus={() => { setFocused(true); onFocus?.(); }}
+            onBlur={() => setFocused(false)}
+            onPress={onPress}
+            style={[
+                s.controlBtn,
+                style,
+                focused && s.controlBtnFocused,
+            ]}
+        >
+            {typeof children === 'function' ? children(focused) : children}
+        </Pressable>
+    );
+}
 
-  useEffect(() => {
-    showOSD();
-    return () => { if (osdTimer.current) clearTimeout(osdTimer.current); };
-  }, [showOSD]);
+function TVMenuButton({ onPress, onFocus, icon: Icon, label, hasTVPreferredFocus }: any) {
+    const [focused, setFocused] = useState(false);
+    return (
+        <Pressable
+            focusable
+            hasTVPreferredFocus={hasTVPreferredFocus}
+            onFocus={() => { setFocused(true); onFocus?.(); }}
+            onBlur={() => setFocused(false)}
+            onPress={onPress}
+            style={[s.menuBtn, focused && s.menuBtnFocused]}
+        >
+            <Icon size={scale(20)} color={focused ? Colors.black : Colors.white} />
+            {label && <Text style={[s.menuBtnText, focused && s.menuBtnTextFocused]}>{label}</Text>}
+        </Pressable>
+    );
+}
 
-  // Handle Web Video HLS and Playback binding
-  useEffect(() => {
-    if (Platform.OS !== 'web' || !videoUrl || !webVideoRef.current) return;
-    const video = webVideoRef.current;
-    let hlsInstance: any = null;
+const TVSidebarItem = React.forwardRef<any, any>(function TVSidebarItem({ onPress, style, children }, ref) {
+    const [focused, setFocused] = useState(false);
+    return (
+        <Pressable
+            ref={ref}
+            focusable
+            onFocus={() => setFocused(true)}
+            onBlur={() => setFocused(false)}
+            onPress={onPress}
+            style={[style, focused && s.itemFocusedWrapper]}
+        >
+            {typeof children === 'function' ? children(focused) : children}
+        </Pressable>
+    );
+});
 
-    let absoluteVideoUrl = videoUrl;
-    if (!videoUrl.startsWith('http')) {
-      const normalized = videoUrl.startsWith('/') ? videoUrl : `/${videoUrl}`;
-      absoluteVideoUrl = `${API_ORIGIN}${normalized}`;
-    }
+export default function TVPlayer({ content, currentEpisode, streamData, videoUrl, title, subtitle, startPosition = 0 }: TVPlayerProps) {
+    const router = useRouter();
+    const videoRef = useRef<VideoRef>(null);
+    const webVideoRef = useRef<HTMLVideoElement>(null);
 
-    const applySeekAndPlay = () => {
-      if (startPosition > 0) {
-        video.currentTime = startPosition;
-      }
-      video.play().catch((err) => {
-        console.warn('[TVPlayer] Autoplay prevented or failed:', err);
-      });
-    };
+    const contentId = content?.id;
+    const episodeId = currentEpisode?.id;
 
-    if (absoluteVideoUrl.includes('.m3u8')) {
-      if (video.canPlayType('application/vnd.apple.mpegurl')) {
-        video.src = absoluteVideoUrl;
-        video.addEventListener('loadedmetadata', applySeekAndPlay);
-      } else {
-        const initHls = () => {
-          const HlsClass = (window as any).Hls;
-          if (HlsClass && HlsClass.isSupported()) {
-            hlsInstance = new HlsClass();
-            hlsInstance.loadSource(absoluteVideoUrl);
-            hlsInstance.attachMedia(video);
-            hlsInstance.on(HlsClass.Events.MANIFEST_PARSED, () => {
-              if (startPosition > 0) {
+    // Player state
+    const [isPlaying, setIsPlaying] = useState(true);
+    const isPlayingRef = useRef(true);
+    const [positionMillis, setPositionMillis] = useState(startPosition * 1000);
+    const positionMillisRef = useRef(startPosition * 1000);
+    const [durationMillis, setDurationMillis] = useState(1);
+    const [isLoaded, setIsLoaded] = useState(false);
+    const [error, setError] = useState(false);
+    const [loading, setLoading] = useState(true);
+
+    // OSD (On-Screen Display) State
+    const [osdVisible, setOsdVisible] = useState(true);
+    const osdVisibleRef = useRef(true);
+    const osdTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+    const osdOpacity = useSharedValue(1);
+
+    // Menus
+    const [activeMenu, setActiveMenu] = useState<'episodes' | 'subs' | 'audio' | null>(null);
+    const [selectedSub, setSelectedSub] = useState<string | number>('off');
+    const [selectedAudio, setSelectedAudio] = useState<string | number>('auto');
+    const [detectedAudioTracks, setDetectedAudioTracks] = useState<any[]>([]);
+    const [detectedTextTracks, setDetectedTextTracks] = useState<any[]>([]);
+    const firstSidebarItemRef = useRef<any>(null);
+
+    // Progress tracking
+    const lastSaveTime = useRef(0);
+
+    const allEpisodes = useMemo(() => {
+        if (!content?.seasons) return [];
+        return content.seasons.flatMap((s: any) => (s.episodes || []).map((e: any) => ({ ...e, seasonNumber: s.number })));
+    }, [content]);
+
+    const currentIdx = useMemo(() => {
+        if (!currentEpisode) return -1;
+        return allEpisodes.findIndex((e: any) => e.id === currentEpisode.id);
+    }, [allEpisodes, currentEpisode]);
+
+    const hasNext = currentIdx >= 0 && currentIdx < allEpisodes.length - 1;
+    const hasPrev = currentIdx > 0;
+
+    const hideOSD = useCallback(() => {
+        osdVisibleRef.current = false;
+        setOsdVisible(false);
+    }, []);
+
+    const showOSD = useCallback(() => {
+        osdVisibleRef.current = true;
+        setOsdVisible(true);
+        setIsPlaying(isPlayingRef.current);
+        setPositionMillis(positionMillisRef.current);
+        osdOpacity.value = withTiming(1, { duration: 200 });
+
+        if (osdTimer.current) clearTimeout(osdTimer.current);
+        if (!activeMenu) {
+            osdTimer.current = setTimeout(() => {
+                osdOpacity.value = withTiming(0, { duration: 300 }, (finished) => {
+                    if (finished) runOnJS(hideOSD)();
+                });
+            }, TV.playerOSDHideMs);
+        }
+    }, [activeMenu, hideOSD]);
+
+    useEffect(() => {
+        showOSD();
+        return () => { if (osdTimer.current) clearTimeout(osdTimer.current); };
+    }, [showOSD]);
+
+    // Handle Web Video HLS and Playback binding
+    useEffect(() => {
+        if (Platform.OS !== 'web' || !videoUrl || !webVideoRef.current) return;
+        const video = webVideoRef.current;
+        let hlsInstance: any = null;
+
+        let absoluteVideoUrl = videoUrl;
+        if (!videoUrl.startsWith('http')) {
+            const normalized = videoUrl.startsWith('/') ? videoUrl : `/${videoUrl}`;
+            absoluteVideoUrl = `${API_ORIGIN}${normalized}`;
+        }
+
+        const applySeekAndPlay = () => {
+            if (startPosition > 0) {
                 video.currentTime = startPosition;
-              }
-              video.play().catch((err) => {
-                console.warn('[TVPlayer] HLS autoplay prevented:', err);
-              });
+            }
+            video.play().catch((err) => {
+                console.warn('[TVPlayer] Autoplay prevented or failed:', err);
             });
-          }
         };
 
-        if (!(window as any).Hls) {
-          const script = document.createElement('script');
-          script.src = 'https://cdn.jsdelivr.net/npm/hls.js@latest';
-          script.onload = initHls;
-          document.body.appendChild(script);
+        if (absoluteVideoUrl.includes('.m3u8')) {
+            if (video.canPlayType('application/vnd.apple.mpegurl')) {
+                video.src = absoluteVideoUrl;
+                video.addEventListener('loadedmetadata', applySeekAndPlay);
+            } else {
+                const initHls = () => {
+                    const HlsClass = (window as any).Hls;
+                    if (HlsClass && HlsClass.isSupported()) {
+                        hlsInstance = new HlsClass();
+                        hlsInstance.loadSource(absoluteVideoUrl);
+                        hlsInstance.attachMedia(video);
+                        hlsInstance.on(HlsClass.Events.MANIFEST_PARSED, () => {
+                            if (startPosition > 0) {
+                                video.currentTime = startPosition;
+                            }
+                            video.play().catch((err) => {
+                                console.warn('[TVPlayer] HLS autoplay prevented:', err);
+                            });
+                        });
+                    }
+                };
+
+                if (!(window as any).Hls) {
+                    const script = document.createElement('script');
+                    script.src = 'https://cdn.jsdelivr.net/npm/hls.js@latest';
+                    script.onload = initHls;
+                    document.body.appendChild(script);
+                } else {
+                    initHls();
+                }
+            }
         } else {
-          initHls();
+            video.src = absoluteVideoUrl;
+            video.addEventListener('loadedmetadata', applySeekAndPlay);
+            if (video.readyState >= 1) {
+                applySeekAndPlay();
+            }
         }
-      }
-    } else {
-      video.src = absoluteVideoUrl;
-      video.addEventListener('loadedmetadata', applySeekAndPlay);
-      if (video.readyState >= 1) {
-        applySeekAndPlay();
-      }
-    }
 
-    return () => {
-      if (hlsInstance) {
-        hlsInstance.destroy();
-      }
-      video.removeEventListener('loadedmetadata', applySeekAndPlay);
+        return () => {
+            if (hlsInstance) hlsInstance.destroy();
+            video.removeEventListener('loadedmetadata', applySeekAndPlay);
+        };
+    }, [videoUrl, startPosition]);
+
+    useEffect(() => {
+        if (Platform.OS !== 'web' || !webVideoRef.current) return;
+        const video = webVideoRef.current;
+        const onTimeUpdate = () => {
+            const pos = video.currentTime * 1000;
+            const dur = video.duration * 1000;
+            
+            positionMillisRef.current = pos;
+            if (dur > 1000) setDurationMillis(dur);
+            
+            if (loading && pos > 0) setLoading(false);
+            
+            const now = Date.now();
+            if (now - lastSaveTime.current > TV.progressSaveIntervalMs) {
+                lastSaveTime.current = now;
+                saveProgress(pos, dur);
+            }
+
+            if (osdVisibleRef.current) {
+                setPositionMillis(pos);
+            }
+        };
+        const onCanPlay = () => setLoading(false);
+        const onPlaying = () => { setLoading(false); setError(false); setIsPlaying(true); isPlayingRef.current = true; };
+        const onPause = () => { setIsPlaying(false); isPlayingRef.current = false; };
+        const onWaiting = () => setLoading(true);
+        const onError = () => { setError(true); setLoading(false); };
+
+        video.addEventListener('timeupdate', onTimeUpdate);
+        video.addEventListener('canplay', onCanPlay);
+        video.addEventListener('playing', onPlaying);
+        video.addEventListener('waiting', onWaiting);
+        video.addEventListener('error', onError);
+
+        return () => {
+            video.removeEventListener('timeupdate', onTimeUpdate);
+            video.removeEventListener('canplay', onCanPlay);
+            video.removeEventListener('playing', onPlaying);
+            video.removeEventListener('waiting', onWaiting);
+            video.removeEventListener('error', onError);
+        };
+    }, [loading, videoUrl]);
+
+    const togglePlayPause = async () => {
+        showOSD();
+        if (Platform.OS === 'web') {
+            const video = webVideoRef.current;
+            if (video) {
+                if (video.paused) video.play().catch(() => { });
+                else video.pause();
+            }
+        } else {
+            const newPlaying = !isPlayingRef.current;
+            isPlayingRef.current = newPlaying;
+            setIsPlaying(newPlaying);
+        }
     };
-  }, [videoUrl, startPosition]);
 
-  // Web Video Event Listener Bridging
-  useEffect(() => {
-    if (Platform.OS !== 'web' || !webVideoRef.current) return;
-    const video = webVideoRef.current;
+    const seek = async (direction: 'forward' | 'backward') => {
+        showOSD();
+        const amount = TV.seekStepSeconds;
+        if (Platform.OS === 'web') {
+            const video = webVideoRef.current;
+            if (video) {
+                let newPos = direction === 'forward' ? video.currentTime + amount : video.currentTime - amount;
+                video.currentTime = Math.max(0, Math.min(newPos, video.duration || 0));
+            }
+        } else {
+            if (!videoRef.current) return;
+            const current = positionMillisRef.current;
+            const duration = durationMillis;
+            const amountMs = amount * 1000;
+            let newPos = direction === 'forward' ? current + amountMs : current - amountMs;
+            newPos = Math.max(0, Math.min(newPos, duration));
 
-    const onTimeUpdate = () => {
-      setStatus({
-        isLoaded: true,
-        isPlaying: !video.paused,
-        positionMillis: video.currentTime * 1000,
-        durationMillis: video.duration * 1000,
-      } as any);
+            videoRef.current.seek(newPos / 1000);
+            positionMillisRef.current = newPos;
+            setPositionMillis(newPos);
+        }
+    };
 
-      if (loading && video.currentTime > 0) {
+    const goNext = () => { if (!hasNext) return; router.replace(`/(tv)/watch/${contentId}?episodeId=${allEpisodes[currentIdx + 1].id}` as any); };
+    const goPrev = () => { if (!hasPrev) return; router.replace(`/(tv)/watch/${contentId}?episodeId=${allEpisodes[currentIdx - 1].id}` as any); };
+
+    // Back button handling
+    useEffect(() => {
+        const backAction = () => {
+            if (activeMenu) {
+                setActiveMenu(null);
+                showOSD();
+                return true;
+            }
+            router.back();
+            return true;
+        };
+        const backHandler = BackHandler.addEventListener('hardwareBackPress', backAction);
+        return () => backHandler.remove();
+    }, [activeMenu, router, showOSD, hideOSD, osdOpacity]);
+
+    // D-Pad → show OSD controls (user navigates with D-Pad once controls are visible)
+    useEffect(() => {
+        if (!TVEvtHandler) return;
+        const tvEventHandler = new TVEvtHandler();
+        tvEventHandler.enable(null, (_cmp: any, evt: any) => {
+            if (!evt) return;
+            const { eventType } = evt;
+            if (['up', 'down', 'left', 'right', 'select', 'playPause'].includes(eventType)) {
+                if (!osdVisibleRef.current && !activeMenu) {
+                    showOSD();
+                }
+            }
+        });
+        return () => tvEventHandler.disable();
+    }, [activeMenu, showOSD]);
+
+    // When a sidebar menu opens, move focus to its first item
+    useEffect(() => {
+        if (activeMenu && firstSidebarItemRef.current) {
+            const timer = setTimeout(() => {
+                firstSidebarItemRef.current?.focus?.();
+            }, 100);
+            return () => clearTimeout(timer);
+        }
+    }, [activeMenu]);
+
+    const onProgress = (data: { currentTime: number; seekableDuration: number }) => {
+        const pos = data.currentTime * 1000;
+        const dur = data.seekableDuration * 1000;
+
+        if (loading && pos > 0) setLoading(false);
+
+        positionMillisRef.current = pos;
+        if (dur > 1000) setDurationMillis(dur);
+
+        const now = Date.now();
+        if (now - lastSaveTime.current > TV.progressSaveIntervalMs) {
+            lastSaveTime.current = now;
+            saveProgress(pos, dur);
+        }
+
+        if (osdVisibleRef.current) {
+            setPositionMillis(pos);
+        }
+    };
+
+    const onLoad = (data: any) => {
+        setIsLoaded(true);
         setLoading(false);
-      }
-
-      const now = Date.now();
-      if (now - lastSaveTime.current > TV.progressSaveIntervalMs) {
-        lastSaveTime.current = now;
-        saveProgress(video.currentTime * 1000, video.duration * 1000);
-      }
-    };
-
-    const onCanPlay = () => {
-      setLoading(false);
-    };
-
-    const onPlaying = () => {
-      setLoading(false);
-      setError(false);
-    };
-
-    const onWaiting = () => {
-      setLoading(true);
-    };
-
-    const onError = () => {
-      setError(true);
-      setLoading(false);
-    };
-
-    video.addEventListener('timeupdate', onTimeUpdate);
-    video.addEventListener('canplay', onCanPlay);
-    video.addEventListener('playing', onPlaying);
-    video.addEventListener('waiting', onWaiting);
-    video.addEventListener('error', onError);
-
-    return () => {
-      video.removeEventListener('timeupdate', onTimeUpdate);
-      video.removeEventListener('canplay', onCanPlay);
-      video.removeEventListener('playing', onPlaying);
-      video.removeEventListener('waiting', onWaiting);
-      video.removeEventListener('error', onError);
-    };
-  }, [loading, videoUrl]);
-
-  const togglePlayPause = async () => {
-    showOSD();
-    if (Platform.OS === 'web') {
-      const video = webVideoRef.current;
-      if (video) {
-        if (video.paused) {
-          video.play().catch(() => {});
-        } else {
-          video.pause();
+        setDurationMillis(data.duration * 1000);
+        if (startPosition > 0) {
+            videoRef.current?.seek(startPosition);
         }
-      }
-    } else {
-      if (!videoRef.current || !status || !('isPlaying' in status)) return;
-      if (status.isPlaying) {
-        await videoRef.current.pauseAsync();
-      } else {
-        await videoRef.current.playAsync();
-      }
-    }
-  };
-
-  const seek = async (direction: 'forward' | 'backward') => {
-    showOSD();
-    const amount = TV.seekStepSeconds;
-    
-    if (Platform.OS === 'web') {
-      const video = webVideoRef.current;
-      if (video) {
-        let newPos = direction === 'forward' ? video.currentTime + amount : video.currentTime - amount;
-        video.currentTime = Math.max(0, Math.min(newPos, video.duration || 0));
-      }
-    } else {
-      if (!videoRef.current || !status || !('positionMillis' in status)) return;
-      const current = status.positionMillis;
-      const duration = status.durationMillis || 0;
-      const amountMs = amount * 1000;
-      let newPos = direction === 'forward' ? current + amountMs : current - amountMs;
-      newPos = Math.max(0, Math.min(newPos, duration));
-      await videoRef.current.setPositionAsync(newPos);
-    }
-  };
-
-  // Back button handling
-  useEffect(() => {
-    const backAction = () => {
-      if (osdVisible) {
-        osdOpacity.value = withTiming(0, { duration: 150 }, () => runOnJS(setOsdVisible)(false));
-        if (osdTimer.current) clearTimeout(osdTimer.current);
-        return true;
-      } else {
-        router.back();
-        return true;
-      }
-    };
-    const backHandler = BackHandler.addEventListener('hardwareBackPress', backAction);
-    return () => backHandler.remove();
-  }, [osdVisible, router]);
-
-  // Universal Smart TV Browser Remote Control integration
-  useEffect(() => {
-    if (Platform.OS !== 'web') return;
-
-    const handleKeyDown = (e: KeyboardEvent) => {
-      // Light up OSD controls on any remote control key press
-      showOSD();
-
-      switch (e.key) {
-        case ' ':
-        case 'Enter':
-          e.preventDefault();
-          togglePlayPause();
-          break;
-        case 'ArrowLeft':
-          e.preventDefault();
-          seek('backward');
-          break;
-        case 'ArrowRight':
-          e.preventDefault();
-          seek('forward');
-          break;
-        case 'Escape':
-        case 'BrowserBack':
-        case 'Back':
-          e.preventDefault();
-          router.back();
-          break;
-        default:
-          break;
-      }
+        if (Array.isArray(data.audioTracks)) {
+            setDetectedAudioTracks(data.audioTracks);
+        }
+        if (Array.isArray(data.textTracks)) {
+            setDetectedTextTracks(data.textTracks);
+        }
     };
 
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [router]);
+    const onAudioTracks = (data: any) => {
+        if (Array.isArray(data.audioTracks)) {
+            setDetectedAudioTracks(data.audioTracks);
+        }
+    };
 
-  const onPlaybackStatusUpdate = (s: AVPlaybackStatus) => {
-    setStatus(s);
-    if (!s.isLoaded) {
-      if (s.error) setError(true);
-      return;
-    }
+    const onTextTracks = (data: any) => {
+        if (Array.isArray(data.textTracks)) {
+            setDetectedTextTracks(data.textTracks);
+        }
+    };
 
-    if (loading && s.positionMillis > 0) setLoading(false);
+    const onEnd = () => {
+        if (hasNext) goNext();
+        else router.back();
+    };
 
-    const now = Date.now();
-    if (now - lastSaveTime.current > TV.progressSaveIntervalMs) {
-      lastSaveTime.current = now;
-      saveProgress(s.positionMillis, s.durationMillis || 0);
-    }
-  };
+    const onBuffer = ({ isBuffering }: { isBuffering: boolean }) => {
+        setLoading(isBuffering);
+    };
 
-  const saveProgress = async (pos: number, dur: number) => {
-    if (pos === 0 || dur === 0) return;
-    try {
-      await fetchApi(API_ROUTES.HISTORY.PROGRESS, {
-        method: 'POST',
-        body: JSON.stringify({
-          contentId,
-          episodeId,
-          progressSeconds: Math.floor(pos / 1000),
-          durationSeconds: Math.floor(dur / 1000),
-        }),
-      });
-    } catch {}
-  };
+    const saveProgress = async (pos: number, dur: number) => {
+        if (pos === 0 || dur === 0 || !contentId) return;
+        try {
+            await fetchApi(API_ROUTES.HISTORY.PROGRESS, {
+                method: 'POST',
+                body: JSON.stringify({
+                    contentId,
+                    episodeId,
+                    progressSeconds: Math.floor(pos / 1000),
+                    durationSeconds: Math.floor(dur / 1000),
+                }),
+            });
+        } catch { }
+    };
 
-  const formatTime = (millis: number) => {
-    const totalSeconds = Math.floor(millis / 1000);
-    const h = Math.floor(totalSeconds / 3600);
-    const m = Math.floor((totalSeconds % 3600) / 60);
-    const s = totalSeconds % 60;
-    if (h > 0) return `${h}:${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
-    return `${m}:${s.toString().padStart(2, '0')}`;
-  };
+    const formatTime = (millis: number) => {
+        const totalSeconds = Math.floor(millis / 1000);
+        const h = Math.floor(totalSeconds / 3600);
+        const m = Math.floor((totalSeconds % 3600) / 60);
+        const s = totalSeconds % 60;
+        if (h > 0) return `${h}:${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
+        return `${m}:${s.toString().padStart(2, '0')}`;
+    };
 
-  const osdAnimStyle = useAnimatedStyle(() => ({ opacity: osdOpacity.value }));
+    const osdAnimStyle = useAnimatedStyle(() => ({ opacity: osdOpacity.value }));
 
-  const isLoaded = status && 'isLoaded' in status && status.isLoaded;
-  const isPlaying = isLoaded && status.isPlaying;
-  const position = isLoaded ? status.positionMillis : 0;
-  const duration = isLoaded ? status.durationMillis || 1 : 1;
-  const progressPct = (position / duration) * 100;
+    const position = positionMillis;
+    const duration = durationMillis || 1;
+    const progressPct = (position / duration) * 100;
 
-  return (
-    <View style={s.container}>
-      {Platform.OS === 'web' ? (
-        <video
-          ref={webVideoRef}
-          style={{ width: '100%', height: '100%', objectFit: 'contain', backgroundColor: 'black' }}
-          autoPlay
-          playsInline
-          controls={false}
-        />
-      ) : (
-        <Video
-          ref={videoRef}
-          source={{ uri: videoUrl }}
-          style={StyleSheet.absoluteFill}
-          resizeMode={ResizeMode.CONTAIN}
-          shouldPlay
-          positionMillis={startPosition * 1000}
-          onPlaybackStatusUpdate={onPlaybackStatusUpdate}
-        />
-      )}
+    const subsList = useMemo(() => {
+        const dbSubs = streamData?.subtitleTracks || currentEpisode?.videoFiles?.[0]?.subtitleTracks || content?.videoFiles?.[0]?.subtitleTracks || [];
+        const mappedDetected = detectedTextTracks.map((t: any, idx: number) => ({
+            label: getLangLabel(t.language, t.title, t.name, `Subtítulo ${idx + 1}`),
+            language: t.language,
+            title: t.title || t.name,
+            type: t.type,
+            index: t.index !== undefined ? t.index : idx
+        }));
+        
+        const combined = dbSubs.map((s: any) => ({
+            ...s,
+            label: getLangLabel(s.language, s.label, s.name, s.label),
+        }));
+        mappedDetected.forEach(dt => {
+            if (dt.language && !combined.some((c: any) => c.language === dt.language)) {
+                combined.push(dt);
+            } else if (!dt.language) {
+                combined.push(dt);
+            }
+        });
+        return combined;
+    }, [streamData, currentEpisode, content, detectedTextTracks]);
 
-      {loading && !error && (
-        <View style={s.centerOverlay}>
-          <ActivityIndicator size="large" color={Colors.primary} />
+    const externalTextTracks = useMemo(() => {
+        const dbSubs = streamData?.subtitleTracks || currentEpisode?.videoFiles?.[0]?.subtitleTracks || content?.videoFiles?.[0]?.subtitleTracks || [];
+        return dbSubs.filter((s: any) => s.url).map((s: any) => ({
+            title: s.label || s.name || s.language || 'Subtítulo',
+            language: s.language || 'es',
+            type: TextTrackType.VTT,
+            uri: s.url
+        }));
+    }, [streamData, currentEpisode, content]);
+
+    const audioList = useMemo(() => {
+        const dbAudio = streamData?.audioTracks || currentEpisode?.videoFiles?.[0]?.audioTracks || content?.videoFiles?.[0]?.audioTracks || [];
+        const mappedDetected = detectedAudioTracks.map((t: any, idx: number) => ({
+            label: getLangLabel(t.language, t.title, t.name, `Audio ${idx + 1}`),
+            language: t.language,
+            index: t.index !== undefined ? t.index : idx,
+            isDefault: t.selected
+        }));
+        
+        const combined = dbAudio.map((a: any) => ({
+            ...a,
+            label: getLangLabel(a.language, a.label, a.name, a.label),
+        }));
+        mappedDetected.forEach(da => {
+            if (da.language && !combined.some((c: any) => c.language === da.language)) {
+                combined.push(da);
+            } else if (!da.language) {
+                combined.push(da);
+            }
+        });
+        return combined;
+    }, [streamData, currentEpisode, content, detectedAudioTracks]);
+
+    return (
+        <View style={s.container}>
+            {Platform.OS === 'web' ? (
+                <video
+                    ref={webVideoRef}
+                    style={{ width: '100%', height: '100%', objectFit: 'contain', backgroundColor: 'black' }}
+                    autoPlay
+                    playsInline
+                    controls={false}
+                />
+            ) : (
+                <Video
+                    ref={videoRef}
+                    source={{ uri: videoUrl }}
+                    style={StyleSheet.absoluteFill}
+                    resizeMode="contain"
+                    paused={!isPlaying}
+                    onProgress={onProgress}
+                    onLoad={onLoad}
+                    onAudioTracks={onAudioTracks}
+                    onTextTracks={onTextTracks}
+                    onEnd={onEnd}
+                    onBuffer={onBuffer}
+                    onError={() => { setError(true); setLoading(false); }}
+                    progressUpdateInterval={1000}
+                    selectedAudioTrack={
+                        selectedAudio === 'auto'
+                            ? { type: SelectedTrackType.SYSTEM }
+                            : typeof selectedAudio === 'number'
+                                ? { type: SelectedTrackType.INDEX, value: selectedAudio }
+                                : { type: SelectedTrackType.LANGUAGE, value: selectedAudio as string }
+                    }
+                    selectedTextTrack={
+                        selectedSub === 'off'
+                            ? { type: SelectedTrackType.DISABLED }
+                            : typeof selectedSub === 'string' && selectedSub.startsWith('LANG:')
+                                ? { type: SelectedTrackType.LANGUAGE, value: selectedSub.replace('LANG:', '') }
+                                : typeof selectedSub === 'string' && selectedSub.startsWith('TITLE:')
+                                    ? { type: SelectedTrackType.TITLE, value: selectedSub.replace('TITLE:', '') }
+                                    : typeof selectedSub === 'number'
+                                        ? { type: SelectedTrackType.INDEX, value: selectedSub }
+                                        : { type: SelectedTrackType.DISABLED }
+                    }
+                    {...(externalTextTracks.length > 0 ? { textTracks: externalTextTracks } : {})}
+                    useTextureView={false}
+                    controls={false}
+                    playInBackground={false}
+                    bufferConfig={{
+                        minBufferMs: 15000,
+                        maxBufferMs: 50000,
+                        bufferForPlaybackMs: 2500,
+                        bufferForPlaybackAfterRebufferMs: 5000
+                    }}
+                />
+            )}
+
+            {loading && !error && (
+                <View style={s.centerOverlay}>
+                    <ActivityIndicator size="large" color={Colors.accent} />
+                </View>
+            )}
+
+            {error && (
+                <View style={s.centerOverlay}>
+                    <AlertCircle size={scale(48)} color={Colors.error} style={{ marginBottom: scale(16) }} />
+                    <Text style={s.errorText}>No se pudo cargar el video</Text>
+                </View>
+            )}
+
+            <Pressable
+                style={StyleSheet.absoluteFill}
+                focusable={!osdVisible && !activeMenu}
+                hasTVPreferredFocus={!osdVisible && !activeMenu}
+                onPress={() => {
+                    if (!activeMenu) togglePlayPause();
+                }}
+            />
+
+            {/* OSD (On-Screen Display) */}
+            {osdVisible && (
+                <Animated.View style={[StyleSheet.absoluteFill, osdAnimStyle]} pointerEvents={!activeMenu ? 'box-none' : 'none'}>
+                    <LinearGradient colors={['rgba(0,0,0,0.9)', 'rgba(0,0,0,0)']} style={s.topBar}>
+                        <Text style={s.title}>{title}</Text>
+                        {!!subtitle && <Text style={s.subtitle}>{subtitle}</Text>}
+                    </LinearGradient>
+
+                    <View style={s.centerOverlay}>
+                        {!isPlaying && isLoaded && !loading && (
+                            <View style={s.pauseIndicator}>
+                                <Pause size={scale(48)} color={Colors.white} fill={Colors.white} />
+                            </View>
+                        )}
+                    </View>
+
+                    <LinearGradient colors={['rgba(0,0,0,0)', 'rgba(0,0,0,0.95)']} style={s.bottomBar}>
+                        <View style={s.controlsRow}>
+                            {/* Left Menus */}
+                            <View style={s.sideControls}>
+                                {content?.seasons?.length > 0 && (
+                                    <TVMenuButton
+                                        icon={List} label="Episodios"
+                                        onPress={() => { setActiveMenu('episodes'); hideOSD(); }}
+                                        onFocus={showOSD}
+                                    />
+                                )}
+                                {subsList.length > 0 && (
+                                    <TVMenuButton icon={MessageSquare} onPress={() => { setActiveMenu('subs'); hideOSD(); }} onFocus={showOSD} />
+                                )}
+                                {audioList.length > 0 && (
+                                    <TVMenuButton icon={Languages} onPress={() => { setActiveMenu('audio'); hideOSD(); }} onFocus={showOSD} />
+                                )}
+                            </View>
+
+                            {/* Center Playback */}
+                            <View style={s.mainControls}>
+                                {hasPrev && (
+                                    <TVPlaybackButton onPress={goPrev} onFocus={showOSD} style={{ marginRight: scale(16) }}>
+                                        {(f: boolean) => <SkipBack size={scale(24)} color={f ? Colors.black : Colors.white} fill={f ? Colors.black : Colors.white} />}
+                                    </TVPlaybackButton>
+                                )}
+                                <TVPlaybackButton onPress={() => seek('backward')} onFocus={showOSD}>
+                                    {(f: boolean) => (
+                                        <View style={{ alignItems: 'center' }}>
+                                            <RotateCcw size={scale(28)} color={f ? Colors.black : Colors.white} />
+                                            <Text style={[s.skipText, f && s.skipTextFocused]}>20s</Text>
+                                        </View>
+                                    )}
+                                </TVPlaybackButton>
+                                <TVPlaybackButton onPress={togglePlayPause} onFocus={showOSD} style={s.playBtn} hasTVPreferredFocus>
+                                    {(f: boolean) => isPlaying
+                                        ? <Pause size={scale(36)} color={Colors.black} fill={Colors.black} />
+                                        : <Play size={scale(36)} color={Colors.black} fill={Colors.black} style={{ marginLeft: scale(4) }} />}
+                                </TVPlaybackButton>
+                                <TVPlaybackButton onPress={() => seek('forward')} onFocus={showOSD}>
+                                    {(f: boolean) => (
+                                        <View style={{ alignItems: 'center' }}>
+                                            <RotateCw size={scale(28)} color={f ? Colors.black : Colors.white} />
+                                            <Text style={[s.skipText, f && s.skipTextFocused]}>20s</Text>
+                                        </View>
+                                    )}
+                                </TVPlaybackButton>
+                                {hasNext && (
+                                    <TVPlaybackButton onPress={goNext} onFocus={showOSD} style={{ marginLeft: scale(16) }}>
+                                        {(f: boolean) => <SkipForward size={scale(24)} color={f ? Colors.black : Colors.white} fill={f ? Colors.black : Colors.white} />}
+                                    </TVPlaybackButton>
+                                )}
+                            </View>
+
+                            {/* Right Spacer for balance */}
+                            <View style={s.sideControls} />
+                        </View>
+
+                        {/* Progress Bar */}
+                        <View style={s.progressContainer}>
+                            <Text style={s.timeText}>{formatTime(position)}</Text>
+                            <View style={s.progressBarTrack}>
+                                <View style={[s.progressBarFill, { width: `${progressPct}%` }]} />
+                                <View style={[s.progressThumb, { left: `${progressPct}%` }]} />
+                            </View>
+                            <Text style={s.timeText}>{formatTime(duration)}</Text>
+                        </View>
+                    </LinearGradient>
+                </Animated.View>
+            )}
+
+            {/* Sidebars */}
+            {activeMenu && (
+                <View style={s.sidebarOverlay}>
+                    <Pressable style={StyleSheet.absoluteFill} focusable={false} onPress={() => { setActiveMenu(null); showOSD(); }} />
+                    <View style={s.sidebar}>
+                        <LinearGradient colors={['rgba(2,4,10,0.98)', 'rgba(2,4,10,0.95)']} style={StyleSheet.absoluteFill} />
+                        <View style={s.sidebarHeader}>
+                            <Text style={s.sidebarTitle}>
+                                {activeMenu === 'episodes' ? 'Episodios' : activeMenu === 'subs' ? 'Subtítulos' : 'Idioma y Audio'}
+                            </Text>
+                        </View>
+
+                        <TVFocusGuide destinations={[]} style={{ flex: 1 }} autoFocus>
+                            {activeMenu === 'episodes' && (
+                                <FlatList
+                                    data={allEpisodes}
+                                    keyExtractor={(item) => item.id}
+                                    contentContainerStyle={{ padding: scale(24), gap: scale(16) }}
+                                    renderItem={({ item: ep, index: epIdx }) => (
+                                        <TVSidebarItem
+                                            ref={epIdx === 0 ? firstSidebarItemRef : undefined}
+                                            onPress={() => { setActiveMenu(null); router.replace(`/(tv)/watch/${contentId}?episodeId=${ep.id}` as any); }}
+                                            style={[s.epItem, episodeId === ep.id && s.epItemActive]}
+                                        >
+                                            {(focused: boolean) => (
+                                                <>
+                                                    <View style={[s.epNum, focused && s.epNumFocused, episodeId === ep.id && s.epNumActive]}>
+                                                        <Text style={[s.epNumText, focused && s.epNumTextFocused]}>{ep.number ?? ''}</Text>
+                                                    </View>
+                                                    <View style={{ flex: 1 }}>
+                                                        <Text style={[s.epName, focused && s.epNameFocused, episodeId === ep.id && s.epNameActive]} numberOfLines={1}>
+                                                            {ep.translations?.[0]?.title || `Episodio ${ep.number ?? ''}`}
+                                                        </Text>
+                                                        <Text style={[s.epMeta, focused && s.epMetaFocused]}>Temporada {ep.seasonNumber ?? ''}</Text>
+                                                    </View>
+                                                </>
+                                            )}
+                                        </TVSidebarItem>
+                                    )}
+                                />
+                            )}
+
+                            {activeMenu === 'subs' && (
+                                <ScrollView contentContainerStyle={{ padding: scale(24), gap: scale(16) }}>
+                                    <TVSidebarItem
+                                        ref={firstSidebarItemRef}
+                                        onPress={() => { setSelectedSub('off'); setActiveMenu(null); showOSD(); }}
+                                        style={s.trackItem}
+                                    >
+                                        {(focused: boolean) => (
+                                            <>
+                                                <Text style={[s.trackText, focused && s.trackTextFocused]}>Desactivados</Text>
+                                                {selectedSub === 'off' && <Check size={scale(20)} color={focused ? Colors.black : Colors.accent} />}
+                                            </>
+                                        )}
+                                    </TVSidebarItem>
+                                    {subsList.map((sub: any, i: number) => {
+                                        // Prioritize Language matching for ExoPlayer, fallback to Index.
+                                        let value: string | number = sub.index !== undefined ? sub.index : i;
+                                        if (sub.language) {
+                                            value = `LANG:${sub.language}`;
+                                        } else if (sub.title && typeof sub.title === 'string') {
+                                            value = `TITLE:${sub.title}`;
+                                        }
+
+                                        const isSelected = selectedSub === value;
+                                        return (
+                                            <TVSidebarItem key={i} onPress={() => { setSelectedSub(value); setActiveMenu(null); showOSD(); }} style={s.trackItem}>
+                                                {(focused: boolean) => (
+                                                    <>
+                                                        <Text style={[s.trackText, focused && s.trackTextFocused]}>{sub.label || sub.language || `Pista ${i + 1}`}</Text>
+                                                        {isSelected && <Check size={scale(20)} color={focused ? Colors.black : Colors.accent} />}
+                                                    </>
+                                                )}
+                                            </TVSidebarItem>
+                                        );
+                                    })}
+                                </ScrollView>
+                            )}
+
+                            {activeMenu === 'audio' && (
+                                <ScrollView contentContainerStyle={{ padding: scale(24), gap: scale(16) }}>
+                                    {audioList.map((aud: any, i: number) => {
+                                        const value = aud.index !== undefined ? aud.index : (aud.language || aud.label);
+                                        const isSelected = selectedAudio === value || (selectedAudio === 'auto' && aud.isDefault);
+                                        return (
+                                            <TVSidebarItem
+                                                key={i}
+                                                ref={i === 0 ? firstSidebarItemRef : undefined}
+                                                onPress={() => { setSelectedAudio(value); setActiveMenu(null); showOSD(); }}
+                                                style={s.trackItem}
+                                            >
+                                                {(focused: boolean) => (
+                                                    <>
+                                                        <Text style={[s.trackText, focused && s.trackTextFocused]}>{aud.label || aud.language || `Audio ${i + 1}`}</Text>
+                                                        {isSelected && <Check size={scale(20)} color={focused ? Colors.black : Colors.accent} />}
+                                                    </>
+                                                )}
+                                            </TVSidebarItem>
+                                        );
+                                    })}
+                                </ScrollView>
+                            )}
+                        </TVFocusGuide>
+                    </View>
+                </View>
+            )}
         </View>
-      )}
-
-      {error && (
-        <View style={s.centerOverlay}>
-          <AlertCircle size={48} color={Colors.error} style={{ marginBottom: 16 }} />
-          <Text style={s.errorText}>No se pudo cargar el video</Text>
-        </View>
-      )}
-
-      {/* Invisible overlay to catch D-Pad focus and clicks */}
-      <Pressable
-        style={StyleSheet.absoluteFill}
-        focusable
-        hasTVPreferredFocus
-        onPress={togglePlayPause}
-        // Emulate D-Pad left/right using blur/focus hacks if needed, 
-        // but react-native TV handles D-Pad arrows natively. 
-        // In a real app, we'd use useTVEventHandler to catch raw remote codes.
-      />
-
-      {/* OSD (On-Screen Display) */}
-      <Animated.View style={[StyleSheet.absoluteFill, osdAnimStyle]} pointerEvents={osdVisible ? 'box-none' : 'none'}>
-        {/* Top Gradient - Title */}
-        <LinearGradient colors={['rgba(0,0,0,0.8)', 'transparent']} style={s.topBar}>
-          <Text style={s.title}>{title}</Text>
-          {!!subtitle && <Text style={s.subtitle}>{subtitle}</Text>}
-        </LinearGradient>
-
-        {/* Center icon indicator */}
-        <View style={s.centerOverlay}>
-          {!isPlaying && isLoaded && !loading && (
-            <View style={s.pauseIndicator}>
-              <Pause size={48} color={Colors.white} fill={Colors.white} />
-            </View>
-          )}
-        </View>
-
-        {/* Bottom Gradient - Controls & Progress */}
-        <LinearGradient colors={['transparent', 'rgba(0,0,0,0.9)']} style={s.bottomBar}>
-          
-          <View style={s.controlsRow}>
-            <View style={s.timeInfo}>
-              <Text style={s.timeText}>{formatTime(position)}</Text>
-            </View>
-
-            {/* Simulated focusable control buttons */}
-            <View style={s.mainControls}>
-              <View style={s.controlBtn}><SkipBack size={24} color={Colors.white} fill={Colors.white} /></View>
-              <View style={[s.controlBtn, s.playBtn]}>
-                {isPlaying ? (
-                  <Pause size={28} color={Colors.black} fill={Colors.black} />
-                ) : (
-                  <Play size={28} color={Colors.black} fill={Colors.black} style={{ marginLeft: 4 }} />
-                )}
-              </View>
-              <View style={s.controlBtn}><SkipForward size={24} color={Colors.white} fill={Colors.white} /></View>
-            </View>
-
-            <View style={s.timeInfo}>
-              <Text style={s.timeText}>{formatTime(duration)}</Text>
-            </View>
-          </View>
-
-          {/* Progress Bar */}
-          <View style={s.progressBarTrack}>
-            <View style={[s.progressBarFill, { width: `${progressPct}%` }]} />
-            <View style={[s.progressThumb, { left: `${progressPct}%` }]} />
-          </View>
-        </LinearGradient>
-      </Animated.View>
-    </View>
-  );
+    );
 }
 
 const s = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: Colors.black,
-  },
-  centerOverlay: {
-    ...StyleSheet.absoluteFillObject,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  errorText: {
-    fontSize: 24,
-    color: Colors.white,
-    fontWeight: '600',
-  },
-  topBar: {
-    position: 'absolute',
-    top: 0, left: 0, right: 0,
-    paddingTop: 40,
-    paddingHorizontal: 60,
-    paddingBottom: 60,
-  },
-  title: {
-    fontSize: 32,
-    fontWeight: '900',
-    color: Colors.white,
-    textShadowColor: 'rgba(0,0,0,0.8)',
-    textShadowOffset: { width: 0, height: 2 },
-    textShadowRadius: 4,
-  },
-  subtitle: {
-    fontSize: 20,
-    color: Colors.textSecondary,
-    marginTop: 4,
-  },
-  pauseIndicator: {
-    width: 96,
-    height: 96,
-    borderRadius: 48,
-    backgroundColor: 'rgba(0,0,0,0.5)',
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  bottomBar: {
-    position: 'absolute',
-    bottom: 0, left: 0, right: 0,
-    paddingBottom: 40,
-    paddingHorizontal: 60,
-    paddingTop: 80,
-  },
-  controlsRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 24,
-  },
-  timeInfo: {
-    width: 100,
-  },
-  timeText: {
-    fontSize: 18,
-    fontWeight: '600',
-    color: Colors.white,
-    fontVariant: ['tabular-nums'],
-  },
-  mainControls: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 32,
-  },
-  controlBtn: {
-    width: 56,
-    height: 56,
-    borderRadius: 28,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  playBtn: {
-    width: 72,
-    height: 72,
-    borderRadius: 36,
-    backgroundColor: Colors.primary,
-    shadowColor: Colors.primary,
-    shadowOffset: { width: 0, height: 0 },
-    shadowOpacity: 0.6,
-    shadowRadius: 16,
-  },
-  progressBarTrack: {
-    height: 6,
-    backgroundColor: 'rgba(255,255,255,0.2)',
-    borderRadius: 3,
-    position: 'relative',
-    justifyContent: 'center',
-  },
-  progressBarFill: {
-    position: 'absolute',
-    left: 0, top: 0, bottom: 0,
-    backgroundColor: Colors.primary,
-    borderRadius: 3,
-  },
-  progressThumb: {
-    position: 'absolute',
-    width: 16,
-    height: 16,
-    borderRadius: 8,
-    backgroundColor: Colors.white,
-    marginLeft: -8,
-    shadowColor: Colors.primary,
-    shadowOpacity: 1,
-    shadowRadius: 10,
-  },
+    container: { flex: 1, backgroundColor: Colors.black },
+    centerOverlay: { ...StyleSheet.absoluteFillObject, justifyContent: 'center', alignItems: 'center' },
+    errorText: { fontSize: scale(24), color: Colors.white, fontWeight: '600' },
+
+    topBar: { position: 'absolute', top: 0, left: 0, right: 0, paddingTop: scale(40), paddingHorizontal: scale(60), paddingBottom: scale(80) },
+    title: { fontSize: scale(36), fontWeight: '900', color: Colors.white },
+    subtitle: { fontSize: scale(22), color: 'rgba(255,255,255,0.7)', marginTop: scale(8), fontWeight: '600' },
+
+    pauseIndicator: { width: scale(96), height: scale(96), borderRadius: scale(48), backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'center', alignItems: 'center' },
+
+    bottomBar: { position: 'absolute', bottom: 0, left: 0, right: 0, paddingBottom: scale(40), paddingHorizontal: scale(60), paddingTop: scale(100) },
+
+    controlsRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: scale(32) },
+    sideControls: { flexDirection: 'row', gap: scale(16), width: scale(300) },
+    mainControls: { flexDirection: 'row', alignItems: 'center', gap: scale(24) },
+
+    controlBtn: { width: scale(64), height: scale(64), borderRadius: scale(32), justifyContent: 'center', alignItems: 'center', backgroundColor: 'rgba(255,255,255,0.1)', borderWidth: 2, borderColor: 'transparent' },
+    controlBtnFocused: { backgroundColor: 'rgba(255,255,255,0.25)', borderColor: Colors.white, transform: [{ scale: 1.1 }] },
+    playBtn: { width: scale(80), height: scale(80), borderRadius: scale(40), backgroundColor: Colors.white, borderColor: Colors.white },
+
+    skipText: { fontSize: scale(12), color: Colors.white, fontWeight: '700', marginTop: scale(2) },
+    skipTextFocused: { color: Colors.black },
+
+    menuBtn: { flexDirection: 'row', alignItems: 'center', gap: scale(10), paddingHorizontal: scale(20), paddingVertical: scale(12), borderRadius: scale(12), backgroundColor: 'rgba(255,255,255,0.1)', borderWidth: 2, borderColor: 'transparent' },
+    menuBtnFocused: { backgroundColor: Colors.white },
+    menuBtnText: { fontSize: scale(16), fontWeight: '700', color: Colors.white },
+    menuBtnTextFocused: { color: Colors.black },
+
+    progressContainer: { flexDirection: 'row', alignItems: 'center', gap: scale(20) },
+    timeText: { fontSize: scale(18), fontWeight: '600', color: Colors.white, fontVariant: ['tabular-nums'], width: scale(80), textAlign: 'center' },
+    progressBarTrack: { flex: 1, height: scale(8), backgroundColor: 'rgba(255,255,255,0.2)', borderRadius: scale(4), justifyContent: 'center' },
+    progressBarFill: { position: 'absolute', left: 0, top: 0, bottom: 0, backgroundColor: Colors.accent, borderRadius: scale(4) },
+    progressThumb: { position: 'absolute', width: scale(20), height: scale(20), borderRadius: scale(10), backgroundColor: Colors.white, marginLeft: scale(-10) },
+
+    // Sidebar
+    sidebarOverlay: { ...StyleSheet.absoluteFillObject, flexDirection: 'row', justifyContent: 'flex-end', backgroundColor: 'rgba(0,0,0,0.6)' },
+    sidebar: { width: scale(500), height: '100%', borderLeftWidth: 1, borderLeftColor: 'rgba(255,255,255,0.1)' },
+    sidebarHeader: { padding: scale(32), borderBottomWidth: 1, borderBottomColor: 'rgba(255,255,255,0.1)' },
+    sidebarTitle: { fontSize: scale(24), fontWeight: '800', color: Colors.white },
+
+    epItem: { flexDirection: 'row', alignItems: 'center', gap: scale(16), padding: scale(16), borderRadius: scale(12), backgroundColor: 'rgba(255,255,255,0.05)', borderWidth: 2, borderColor: 'transparent' },
+    epItemFocused: { backgroundColor: Colors.white, transform: [{ scale: 1.02 }] },
+    epItemActive: { borderColor: Colors.accent, backgroundColor: 'rgba(0,195,255,0.1)' },
+    epNum: { width: scale(48), height: scale(48), borderRadius: scale(8), backgroundColor: 'rgba(0,0,0,0.4)', justifyContent: 'center', alignItems: 'center' },
+    epNumFocused: { backgroundColor: 'rgba(0,0,0,0.1)' },
+    epNumActive: { backgroundColor: Colors.accent },
+    epNumText: { fontSize: scale(18), fontWeight: '800', color: Colors.white },
+    epNumTextFocused: { color: Colors.black },
+    epName: { fontSize: scale(18), fontWeight: '700', color: Colors.white, marginBottom: scale(4) },
+    epNameFocused: { color: Colors.black },
+    epNameActive: { color: Colors.accent },
+    epMeta: { fontSize: scale(14), color: 'rgba(255,255,255,0.5)' },
+    epMetaFocused: { color: 'rgba(0,0,0,0.6)' },
+
+    trackItem: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: scale(20), borderRadius: scale(12), backgroundColor: 'rgba(255,255,255,0.05)', borderWidth: 2, borderColor: 'transparent' },
+    itemFocusedWrapper: { backgroundColor: Colors.white, transform: [{ scale: 1.02 }] },
+    trackText: { fontSize: scale(18), fontWeight: '600', color: Colors.white },
+    trackTextFocused: { color: Colors.black },
 });

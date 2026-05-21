@@ -198,11 +198,6 @@ const s = StyleSheet.create({
   keyFocused: {
     borderColor: Colors.white,
     backgroundColor: 'rgba(255,255,255,0.3)',
-    shadowColor: Colors.white,
-    shadowOffset: { width: 0, height: 0 },
-    shadowOpacity: 0.5,
-    shadowRadius: 10,
-    elevation: 5,
     transform: [{ scale: 1.1 }],
     zIndex: 10,
   },

@@ -1,0 +1,13 @@
+components/tv/TVPlayer.tsx(227,7): error TS2552: Cannot find name 'statusRef'. Did you mean 'status'?
+components/tv/TVPlayer.tsx(230,30): error TS2304: Cannot find name 'lastPlayingState'.
+components/tv/TVPlayer.tsx(231,7): error TS2304: Cannot find name 'lastPlayingState'.
+components/tv/TVPlayer.tsx(234,9): error TS2552: Cannot find name 'setStatus'. Did you mean 'status'?
+components/tv/TVPlayer.tsx(419,11): error TS2322: Type '{ type: "system"; } | { type: "language"; value: string; }' is not assignable to type 'SelectedTrack | undefined'.
+  Type '{ type: "system"; }' is not assignable to type 'SelectedTrack'.
+    Types of property 'type' are incompatible.
+      Type '"system"' is not assignable to type 'SelectedTrackType'.
+components/tv/TVPlayer.tsx(420,11): error TS2322: Type '{ type: "disabled"; } | { type: "language"; value: string; }' is not assignable to type 'SelectedTrack | undefined'.
+  Type '{ type: "disabled"; }' is not assignable to type 'SelectedTrack'.
+    Types of property 'type' are incompatible.
+      Type '"disabled"' is not assignable to type 'SelectedTrackType'.
+components/tv/TVSkeleton.tsx(49,29): error TS2339: Property 'skeleton' does not exist on type '{ primary: string; primarySoft: string; accent: string; bg: string; bgDark: string; bgSidebar: string; text: string; textSecondary: string; textMuted: string; focusBorder: string; focusBg: string; ... 5 more ...; error: string; }'.

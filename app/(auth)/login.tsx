@@ -1,25 +1,26 @@
 import React, { useState, useRef } from 'react';
-import { View, Text, StyleSheet, TextInput, Pressable, ActivityIndicator, Alert } from 'react-native';
+import { View, Text, StyleSheet, TextInput, Pressable, ActivityIndicator, Alert, Dimensions } from 'react-native';
 import { Image } from 'expo-image';
 import { useRouter } from 'expo-router';
 import { LinearGradient } from 'expo-linear-gradient';
-import Animated, { FadeIn, FadeInDown } from 'react-native-reanimated';
-import { Mail, Lock, Eye, EyeOff, LogIn, ChevronRight } from 'lucide-react-native';
+import Animated, { useSharedValue, useAnimatedStyle, withTiming } from 'react-native-reanimated';
+import { User, Lock, Eye, EyeOff } from 'lucide-react-native';
 import { Colors } from '../../theme/colors';
 import { fetchApi } from '../../lib/api-client';
 import { API_ROUTES } from '../../lib/api-routes';
 import { useAuth } from '../../context/AuthContext';
 import TVCosmicBackground from '../../components/tv/TVCosmicBackground';
+import { scale } from '../../lib/scale';
 
-// ─── TV Optimized Input Field ─────────────────────────────────────────────────
+const { width: SW, height: SH } = Dimensions.get('window');
+
+// ─── TV Optimized Input Field ────────────────────────────────────────────────
 function TVInputField({
-  label, value, onChange, placeholder, secureText, icon: Icon,
+  value, onChange, secureText, icon: Icon,
   hasTVPreferredFocus, returnKeyType, onSubmitEditing,
 }: {
-  label: string;
   value: string;
   onChange: (v: string) => void;
-  placeholder: string;
   secureText?: boolean;
   icon: any;
   hasTVPreferredFocus?: boolean;
@@ -30,78 +31,87 @@ function TVInputField({
   const [showPass, setShowPass] = useState(false);
   const inputRef = useRef<TextInput>(null);
 
-  // For TV, we only want the keyboard to appear when the user PRESSED 'OK' on the field.
-  // Navigating over it with the D-Pad should only highlight the wrapper.
+  const scaleAnim = useSharedValue(1);
+
   const handlePress = () => {
     inputRef.current?.focus();
   };
 
+  const animStyle = useAnimatedStyle(() => ({
+    transform: [{ scale: withTiming(scaleAnim.value, { duration: 150 }) }],
+  }));
+
   return (
-    <View style={s.fieldContainer}>
-      <Text style={[s.fieldLabel, focused && s.fieldLabelFocused]}>{label}</Text>
+    <Animated.View style={[s.fieldRow, animStyle]}>
+      <View style={[s.iconBox, focused && s.iconBoxFocused]}>
+        <Icon size={scale(28)} color={focused ? '#FFFFFF' : '#9CA3AF'} strokeWidth={3} />
+      </View>
+
       <Pressable
         focusable
         hasTVPreferredFocus={hasTVPreferredFocus}
-        onFocus={() => setFocused(true)}
-        onBlur={() => setFocused(false)}
+        onFocus={() => { setFocused(true); scaleAnim.value = 1.04; }}
+        onBlur={() => { setFocused(false); scaleAnim.value = 1; }}
         onPress={handlePress}
-        style={[s.fieldWrap, focused && s.fieldWrapFocused]}
+        style={[s.inputBox, focused && s.inputBoxFocused]}
       >
-        <Icon size={24} color={focused ? Colors.black : 'rgba(255,255,255,0.4)'} strokeWidth={2.5} />
         <TextInput
           ref={inputRef}
           value={value}
           onChangeText={onChange}
-          placeholder={focused ? '' : placeholder} // Clear placeholder when focused for cleaner typing
-          placeholderTextColor="rgba(255,255,255,0.2)"
           secureTextEntry={secureText && !showPass}
           style={[s.textInput, focused && s.textInputFocused]}
           autoCapitalize="none"
           autoCorrect={false}
-          keyboardType={label.includes('Correo') ? 'email-address' : 'default'}
           returnKeyType={returnKeyType || 'next'}
           onSubmitEditing={onSubmitEditing}
           blurOnSubmit={false}
+          placeholderTextColor="rgba(255,255,255,0.3)"
         />
-        {secureText && (
-          <Pressable
-            focusable={false}
-            onPress={() => setShowPass(p => !p)}
-            hitSlop={12}
-          >
-            {showPass
-              ? <EyeOff size={24} color={focused ? 'rgba(0,0,0,0.5)' : 'rgba(255,255,255,0.3)'} />
-              : <Eye size={24} color={focused ? 'rgba(0,0,0,0.5)' : 'rgba(255,255,255,0.3)'} />
-            }
-          </Pressable>
-        )}
       </Pressable>
-    </View>
+
+      {secureText && (
+        <Pressable
+          focusable={false}
+          onPress={() => setShowPass(p => !p)}
+          hitSlop={20}
+          style={s.eyeBox}
+        >
+          {showPass
+            ? <EyeOff size={scale(24)} color="#9CA3AF" />
+            : <Eye size={scale(24)} color="#9CA3AF" />
+          }
+        </Pressable>
+      )}
+    </Animated.View>
   );
 }
 
 // ─── Submit Button ─────────────────────────────────────────────────────────────
 function SubmitButton({ onPress, loading }: { onPress: () => void; loading: boolean }) {
   const [focused, setFocused] = useState(false);
+  const scaleAnim = useSharedValue(1);
+
+  const animStyle = useAnimatedStyle(() => ({
+    transform: [{ scale: withTiming(scaleAnim.value, { duration: 150 }) }],
+  }));
+
   return (
-    <Pressable
-      focusable
-      onFocus={() => setFocused(true)}
-      onBlur={() => setFocused(false)}
-      onPress={onPress}
-      disabled={loading}
-      style={[s.submitBtn, focused && s.submitBtnFocused]}
-    >
-      {loading
-        ? <ActivityIndicator size="small" color={focused ? Colors.black : Colors.white} />
-        : (
-          <>
-            <Text style={[s.submitText, focused && s.submitTextFocused]}>INICIAR SESIÓN</Text>
-            <ChevronRight size={24} color={focused ? Colors.black : Colors.accent} strokeWidth={3} />
-          </>
-        )
-      }
-    </Pressable>
+    <Animated.View style={[s.submitWrapper, animStyle]}>
+      <Pressable
+        focusable
+        onFocus={() => { setFocused(true); scaleAnim.value = 1.06; }}
+        onBlur={() => { setFocused(false); scaleAnim.value = 1; }}
+        onPress={onPress}
+        disabled={loading}
+        style={[s.submitBtn, focused && s.submitBtnFocused]}
+      >
+        {loading
+          ? <ActivityIndicator size="small" color="#FFFFFF" />
+          : <Text style={[s.submitText, focused && s.submitTextFocused]}>Aceptar</Text>
+        }
+      </Pressable>
+    </Animated.View>
   );
 }
 
@@ -113,11 +123,13 @@ export default function LoginScreen() {
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
+  const [errorMsg, setErrorMsg] = useState('');
   const passwordRef = useRef<TextInput>(null);
 
   const handleLogin = async () => {
+    setErrorMsg('');
     if (!username.trim() || !password.trim()) {
-      Alert.alert('Campos requeridos', 'Por favor ingresa tu usuario y contraseña.');
+      setErrorMsg('Por favor ingresa tu usuario y contraseña.');
       return;
     }
     setLoading(true);
@@ -127,13 +139,14 @@ export default function LoginScreen() {
         body: JSON.stringify({ username: username.trim(), password }),
       });
       if (res.success && res.data?.accessToken) {
-        await login(res.data.accessToken, res.data.refreshToken, res.data.user);
+        // Run login context setup asynchronously so it doesn't block UI navigation
+        login(res.data.accessToken, res.data.refreshToken, res.data.user).catch(console.warn);
         router.replace('/(tv)/home');
       } else {
-        Alert.alert('Acceso Denegado', res.message || 'Usuario o contraseña incorrectos.');
+        setErrorMsg(res.message || 'Usuario o contraseña incorrectos.');
       }
-    } catch {
-      Alert.alert('Error de Conexión', 'No se pudo conectar con el servidor. Verifica tu red.');
+    } catch (err: any) {
+      setErrorMsg(err?.message || 'No se pudo conectar con el servidor. Verifica tu red.');
     } finally {
       setLoading(false);
     }
@@ -141,54 +154,47 @@ export default function LoginScreen() {
 
   return (
     <View style={s.container}>
+      {/* Animated Divergent Cosmic Background */}
       <TVCosmicBackground />
 
       <View style={s.contentWrapper}>
-        {/* Left Side: Cinematic Branding */}
-        <Animated.View entering={FadeIn.duration(800)} style={s.leftSide}>
-           <Image source={require('../../assets/logo.png')} style={s.logo} contentFit="contain" />
-           <Text style={s.heroText}>Disfruta del mejor contenido en pantalla grande.</Text>
-           <Text style={s.subHeroText}>Inicia sesión para acceder a tu catálogo exclusivo de películas y series en máxima calidad.</Text>
-        </Animated.View>
-
-        {/* Right Side: Floating Login Card */}
-        <Animated.View entering={FadeInDown.delay(200).duration(600).springify()} style={s.rightSide}>
-          <View style={s.loginCard}>
-            <View style={s.cardHeader}>
-              <LogIn size={32} color={Colors.accent} />
-              <Text style={s.cardTitle}>Acceder</Text>
-            </View>
+        {/* Left Side: Form */}
+        <View style={s.formSide}>
+          <Animated.Text style={s.mainTitle}>
+            Iniciar Sesión
+          </Animated.Text>
+          
+          <Animated.View style={[s.loginCard, { backgroundColor: 'rgba(10, 10, 15, 0.95)' }]}>
 
             <View style={s.form}>
               <TVInputField
-                label="USUARIO"
                 value={username}
                 onChange={setUsername}
-                placeholder="Ingresa tu usuario"
-                icon={Mail}
+                icon={User}
                 hasTVPreferredFocus
                 onSubmitEditing={() => passwordRef.current?.focus()}
               />
               <TVInputField
-                label="CONTRASEÑA"
                 value={password}
                 onChange={setPassword}
-                placeholder="Ingresa tu contraseña"
                 secureText
                 icon={Lock}
                 returnKeyType="done"
                 onSubmitEditing={handleLogin}
               />
-
-              <View style={s.actionRow}>
-                <SubmitButton onPress={handleLogin} loading={loading} />
-              </View>
+              {!!errorMsg && (
+                <View style={s.errorContainer}>
+                  <Text style={s.errorText}>{errorMsg}</Text>
+                </View>
+              )}
+              <SubmitButton onPress={handleLogin} loading={loading} />
             </View>
-            
-            <Text style={s.footerNote}>
-              ¿Olvidaste tu contraseña? Visita peliplus.com/recovery desde tu móvil o PC.
-            </Text>
-          </View>
+          </Animated.View>
+        </View>
+
+        {/* Right Side: Big Logo */}
+        <Animated.View style={s.brandSide}>
+           <Image source={require('../../assets/logo.png')} style={s.logo} contentFit="contain" />
         </Animated.View>
       </View>
     </View>
@@ -199,158 +205,147 @@ export default function LoginScreen() {
 const s = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#02040A',
+    backgroundColor: '#070614',
     justifyContent: 'center',
   },
   contentWrapper: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: 100,
-    gap: 80,
+    paddingHorizontal: scale(100),
+    gap: scale(100),
+    width: '100%',
+    justifyContent: 'center',
   },
 
-  // ── Left Side ──
-  leftSide: {
-    flex: 1,
-    paddingVertical: 40,
+  // ── Form Side (Left) ──
+  formSide: {
+    width: scale(540),
+    alignItems: 'center',
   },
-  logo: {
-    width: 260,
-    height: 80,
-    marginBottom: 60,
-  },
-  heroText: {
-    fontSize: 56,
-    fontWeight: '900',
-    color: Colors.white,
-    lineHeight: 64,
-    letterSpacing: -1,
-    marginBottom: 24,
-  },
-  subHeroText: {
-    fontSize: 22,
-    color: 'rgba(255,255,255,0.6)',
-    lineHeight: 34,
-    maxWidth: '85%',
-  },
-
-  // ── Right Side / Form ──
-  rightSide: {
-    width: 520,
+  mainTitle: {
+    fontSize: scale(52),
+    fontWeight: '800',
+    color: '#FFFFFF',
+    alignSelf: 'flex-start',
+    marginBottom: scale(30),
+    marginLeft: scale(20),
   },
   loginCard: {
-    backgroundColor: 'rgba(255,255,255,0.03)',
-    borderRadius: 32,
-    padding: 48,
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.08)',
-    // Fake blur effect using solid dark color with low opacity over the cosmic bg
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 20 },
-    shadowOpacity: 0.5,
-    shadowRadius: 40,
-  },
-  cardHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 16,
-    marginBottom: 48,
-  },
-  cardTitle: {
-    fontSize: 36,
-    fontWeight: '800',
-    color: Colors.white,
+    backgroundColor: 'rgba(10, 10, 15, 0.55)', // Translucent glass base
+    borderRadius: scale(24),
+    paddingHorizontal: scale(42),
+    paddingVertical: scale(62),
+    width: '100%',
+    borderWidth: 1.5,
+    borderColor: 'rgba(255, 255, 255, 0.15)',
+    overflow: 'hidden',
   },
   form: {
-    gap: 32,
+    gap: scale(34),
   },
 
   // ── Input Fields ──
-  fieldContainer: {
-    gap: 12,
-  },
-  fieldLabel: {
-    fontSize: 14,
-    fontWeight: '800',
-    color: 'rgba(255,255,255,0.4)',
-    letterSpacing: 2,
-    marginLeft: 8,
-  },
-  fieldLabelFocused: {
-    color: Colors.accent,
-  },
-  fieldWrap: {
+  fieldRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 16,
-    backgroundColor: 'rgba(0,0,0,0.3)',
-    borderRadius: 20,
-    borderWidth: 2,
-    borderColor: 'rgba(255,255,255,0.1)',
-    paddingHorizontal: 24,
-    paddingVertical: 20,
+    gap: scale(16),
   },
-  fieldWrapFocused: {
-    backgroundColor: Colors.white,
-    borderColor: Colors.white,
-    transform: [{ scale: 1.05 }],
-    shadowColor: Colors.white,
-    shadowOffset: { width: 0, height: 0 },
-    shadowOpacity: 0.3,
-    shadowRadius: 20,
-    elevation: 10,
-    zIndex: 10,
+  iconBox: {
+    width: scale(72),
+    height: scale(72),
+    backgroundColor: 'rgba(255, 255, 255, 0.08)',
+    borderRadius: scale(16),
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  iconBoxFocused: {
+    backgroundColor: '#3b82f6', // Bright blue on focus
+  },
+  inputBox: {
+    flex: 1,
+    height: scale(72),
+    backgroundColor: 'rgba(255, 255, 255, 0.08)',
+    borderRadius: scale(16),
+    paddingHorizontal: scale(24),
+    justifyContent: 'center',
+    borderWidth: 1.5,
+    borderColor: 'transparent',
+  },
+  inputBoxFocused: {
+    backgroundColor: '#FFFFFF',
+    borderColor: '#3b82f6',
   },
   textInput: {
-    flex: 1,
-    fontSize: 22,
-    fontWeight: '600',
-    color: Colors.white,
+    fontSize: scale(24),
+    fontWeight: '700',
+    color: '#FFFFFF',
     padding: 0,
     margin: 0,
   },
   textInputFocused: {
-    color: Colors.black, // Dark text when the wrapper becomes white
+    color: '#000000',
+  },
+  eyeBox: {
+    position: 'absolute',
+    right: scale(-40),
+    width: scale(32),
+    height: scale(32),
+    borderRadius: scale(16),
+    backgroundColor: 'rgba(255, 255, 255, 0.08)',
+    justifyContent: 'center',
+    alignItems: 'center',
   },
 
   // ── Submit Button ──
-  actionRow: {
-    marginTop: 16,
+  submitWrapper: {
+    alignItems: 'center',
+    marginTop: scale(20),
   },
   submitBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 12,
-    backgroundColor: 'transparent',
-    borderRadius: 20,
-    paddingVertical: 22,
-    borderWidth: 2,
-    borderColor: Colors.accent,
+    backgroundColor: 'rgba(255, 255, 255, 0.1)', // Dark glass button
+    paddingVertical: scale(14),
+    paddingHorizontal: scale(48),
+    borderRadius: scale(16),
+    borderWidth: 1.5,
+    borderColor: 'rgba(255, 255, 255, 0.15)',
   },
   submitBtnFocused: {
-    backgroundColor: Colors.accent,
-    transform: [{ scale: 1.05 }],
-    shadowColor: Colors.accent,
-    shadowOffset: { width: 0, height: 10 },
-    shadowOpacity: 0.4,
-    shadowRadius: 20,
+    backgroundColor: '#FFFFFF', // Highlight white on focus
+    borderColor: '#FFFFFF',
   },
   submitText: {
-    fontSize: 20,
-    fontWeight: '900',
-    color: Colors.accent,
-    letterSpacing: 2,
+    fontSize: scale(24),
+    fontWeight: '800',
+    color: '#FFFFFF',
   },
   submitTextFocused: {
-    color: Colors.black,
+    color: '#000000',
   },
 
-  footerNote: {
-    marginTop: 40,
-    fontSize: 15,
-    color: 'rgba(255,255,255,0.3)',
+  // ── Error Message ──
+  errorContainer: {
+    marginTop: scale(10),
+    backgroundColor: 'rgba(239, 68, 68, 0.1)', // Light translucent red
+    padding: scale(10),
+    borderRadius: scale(8),
+    borderWidth: 1,
+    borderColor: 'rgba(239, 68, 68, 0.3)',
+  },
+  errorText: {
+    color: '#FCA5A5', // Light red for dark backgrounds
+    fontSize: scale(14),
+    fontWeight: '700',
     textAlign: 'center',
-    lineHeight: 22,
+  },
+
+  // ── Brand Side (Right) ──
+  brandSide: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  logo: {
+    width: scale(450),
+    height: scale(250),
   },
 });

@@ -1,0 +1,4 @@
+[{"AllowMultiple":false,"EndLine":10,"ReplacementContent":"import { Search, User, Heart } from 'lucide-react-native';","StartLine":8,"TargetContent":"import { Search, User } from 'lucide-react-native';"},{"AllowMultiple":false,"EndLine":125,"ReplacementCon
+<truncated 7483 bytes>
+[{"AllowMultiple":false,"EndLine":130,"ReplacementContent":"            {/* Right: Favorites & User */}\n            <View style={s.rightArea}>\n                <IconBtn onPress={() => router.push('/(tv)/favorites')}>\n                    <Heart\n         
+<truncated 5183 bytes>

@@ -1,474 +1,776 @@
-import React, { useState } from 'react';
-import { View, Text, StyleSheet, Alert, Pressable } from 'react-native';
-import { LogOut, User, Settings, CreditCard, ChevronRight } from 'lucide-react-native';
+import React, { useState, useEffect, useCallback } from 'react';
+import { View, Text, StyleSheet, Pressable, ActivityIndicator, FlatList, Dimensions } from 'react-native';
+import { LogOut, User, History, Play } from 'lucide-react-native';
+import { Image } from 'expo-image';
 import { useRouter } from 'expo-router';
-import Animated, { FadeIn, FadeInDown, FadeInRight } from 'react-native-reanimated';
+import Animated from 'react-native-reanimated';
+import { LinearGradient } from 'expo-linear-gradient';
 import { Colors } from '../../theme/colors';
-import { TV } from '../../theme/tv';
 import { useAuth } from '../../context/AuthContext';
-import TVCosmicBackground from '../../components/tv/TVCosmicBackground';
+import TVModal from '../../components/tv/TVModal';
+import { fetchApi } from '../../lib/api-client';
+import { API_ROUTES, resolveImageUrl } from '../../lib/api-routes';
+import { scale } from '../../lib/scale';
+import { useDoubleBackExit } from '../../hooks/useDoubleBackExit';
 
-const TVFocusGuide = (require('react-native') as any).TVFocusGuideView ?? View;
+const { width: SW, height: SH } = Dimensions.get('window');
+const RW = SW - scale(460) - scale(120) - scale(50); // Right column width
+const H_COLS = 4;
+const H_GAP = scale(16);
+const H_CARD_W = (RW - H_GAP * (H_COLS - 1)) / H_COLS;
+const H_CARD_H = H_CARD_W * 1.5; // 2:3 poster ratio
 
-// ─── Profile Action Button ─────────────────────────────────────────────────────
-function ProfileActionButton({
-  label, icon: Icon, onPress, hasTVPreferredFocus, isDestructive,
+function ModalButton({ onPress, title, isDestructive = false, hasTVPreferredFocus = false }: any) {
+    const [focused, setFocused] = useState(false);
+    return (
+        <Pressable
+            focusable
+            hasTVPreferredFocus={hasTVPreferredFocus}
+            onFocus={() => setFocused(true)}
+            onBlur={() => setFocused(false)}
+            onPress={onPress}
+            style={[
+                isDestructive ? s.modalBtnDestructive : s.modalBtn,
+                focused && (isDestructive ? s.modalBtnDestructiveFocused : s.modalBtnFocused)
+            ]}
+        >
+            <Text style={[
+                isDestructive ? s.modalBtnDestructiveText : s.modalBtnText,
+                focused && (isDestructive ? s.modalBtnDestructiveTextFocused : s.modalBtnTextFocused)
+            ]}>
+                {title}
+            </Text>
+        </Pressable>
+    );
+}
+
+function MainActionButton({ onPress, title, isLogin = false, hasTVPreferredFocus = false }: any) {
+    const [focused, setFocused] = useState(false);
+    return (
+        <Pressable
+            focusable
+            hasTVPreferredFocus={hasTVPreferredFocus}
+            onFocus={() => setFocused(true)}
+            onBlur={() => setFocused(false)}
+            onPress={onPress}
+            style={[
+                s.logoutBtn,
+                isLogin && { width: '100%', borderColor: '#38BDF8', marginTop: scale(10) },
+                focused && (isLogin ? { backgroundColor: '#38BDF8', transform: [{ scale: 1.05 }] } : [s.logoutBtnFocused, { transform: [{ scale: 1.05 }] }])
+            ]}
+        >
+            {isLogin ? null : <LogOut size={scale(18)} color={focused ? Colors.black : Colors.error} />}
+            <Text style={
+                isLogin
+                    ? { fontSize: scale(14), fontWeight: '800', color: focused ? '#000' : '#38BDF8' }
+                    : [s.logoutBtnText, focused && s.logoutBtnTextFocused]
+            }>
+                {title}
+            </Text>
+        </Pressable>
+    );
+}
+
+// ─── History Item Component (Optimized for D-Pad) ──────────────────────────────
+function HistoryItem({
+    item, index, onPlay,
 }: {
-  label: string;
-  icon: any;
-  onPress: () => void;
-  hasTVPreferredFocus?: boolean;
-  isDestructive?: boolean;
+    item: any; index: number;
+    onPlay: () => void;
 }) {
-  const [focused, setFocused] = useState(false);
+    const [cardFocused, setCardFocused] = useState(false);
+    const c = item.content || {};
+    const backdrop = c.thumbnails?.find((t: any) => t.type === 'POSTER')?.url
+        || c.thumbnails?.find((t: any) => t.type === 'BACKDROP')?.url
+        || c.thumbnails?.find((t: any) => t.type === 'BANNER')?.url
+        || c.thumbnails?.[0]?.url;
+    const title = c.translations?.[0]?.title || '';
+    const progress = item.progressSeconds || 0;
+    const duration = item.durationSeconds || 0;
+    const progressPct = duration > 0 ? Math.min((progress / duration) * 100, 100) : 0;
 
-  return (
-    <Pressable
-      focusable
-      hasTVPreferredFocus={hasTVPreferredFocus}
-      onFocus={() => setFocused(true)}
-      onBlur={() => setFocused(false)}
-      onPress={onPress}
-      style={[
-        s.actionBtn,
-        focused && s.actionBtnFocused,
-        isDestructive && s.actionBtnDestructive,
-        focused && isDestructive && s.actionBtnDestructiveFocused,
-      ]}
-    >
-      <Icon
-        size={28}
-        color={
-          focused
-            ? (isDestructive ? Colors.white : Colors.black)
-            : (isDestructive ? Colors.error : Colors.accent)
-        }
-        strokeWidth={2.5}
-      />
-      <Text style={[
-        s.actionText,
-        focused && s.actionTextFocused,
-        isDestructive && s.actionTextDestructive,
-        focused && isDestructive && { color: Colors.white },
-      ]}>
-        {label}
-      </Text>
-      <View style={{ flex: 1 }} />
-      <ChevronRight
-        size={24}
-        color={
-          focused
-            ? (isDestructive ? Colors.white : Colors.black)
-            : 'rgba(255,255,255,0.2)'
-        }
-      />
-    </Pressable>
-  );
+    return (
+        <View style={s.historyItemContainer}>
+            {/* Poster Card */}
+            <Pressable
+                focusable
+                hasTVPreferredFocus={index === 0}
+                onFocus={() => setCardFocused(true)}
+                onBlur={() => setCardFocused(false)}
+                onPress={onPlay}
+                style={[s.historyCard, cardFocused && s.historyCardFocused]}
+            >
+                {backdrop ? (
+                    <Image
+                        source={resolveImageUrl(backdrop)}
+                        style={StyleSheet.absoluteFill}
+                        contentFit="cover"
+                    />
+                ) : (
+                    <View style={[StyleSheet.absoluteFill, { backgroundColor: '#1e293b', justifyContent: 'center', alignItems: 'center' }]}>
+                        <Play size={scale(24)} color="rgba(255,255,255,0.15)" fill="rgba(255,255,255,0.15)" />
+                    </View>
+                )}
+
+                <LinearGradient
+                    colors={['rgba(0,0,0,0)', 'rgba(0,0,0,0.85)']}
+                    style={[StyleSheet.absoluteFill, s.historyCardGradient]}
+                />
+                <Text style={s.historyCardTitle} numberOfLines={1}>{title}</Text>
+
+                {progressPct > 0 && (
+                    <View style={s.historyProgressBar}>
+                        <View style={[s.historyProgressFill, { width: `${progressPct}%` as any }]} />
+                    </View>
+                )}
+            </Pressable>
+        </View>
+    );
 }
 
 // ─── Main Screen ───────────────────────────────────────────────────────────────
 export default function ProfileScreen() {
-  const { user, logout } = useAuth();
-  const router = useRouter();
-
-  const handleLogout = () => {
-    Alert.alert(
-      'Cerrar Sesión',
-      '¿Estás seguro de que deseas salir de tu cuenta?',
-      [
-        { text: 'Cancelar', style: 'cancel' },
-        {
-          text: 'Sí, Salir',
-          onPress: async () => {
-            await logout();
-            router.replace('/(auth)/login');
-          }
-        },
-      ]
-    );
-  };
-
-  if (!user) {
-    return (
-      <View style={[s.container, s.centerContainer]}>
-        <TVCosmicBackground />
-        <Animated.View entering={FadeInDown.duration(600)} style={s.emptyCard}>
-          <User size={80} color="rgba(255,255,255,0.2)" style={{ marginBottom: 24 }} />
-          <Text style={s.emptyTitle}>No has iniciado sesión</Text>
-          <Text style={s.emptySubtitle}>Inicia sesión para ver tu lista de favoritos, retomar tus películas pendientes y gestionar tu cuenta.</Text>
-          <ProfileActionButton
-            label="INICIAR SESIÓN"
-            icon={User}
-            onPress={() => router.push('/(auth)/login')}
-            hasTVPreferredFocus
-          />
-        </Animated.View>
-      </View>
-    );
-  }
-
-  const currentProfile = user?.profiles?.[0];
-  const acc = user?.endUserAccount;
-  const isPremium = acc?.planId != null;
-
-  // Smart client-side calculation to detect stacked/accumulated plans
-  let isAccumulated = false;
-  if (isPremium && acc?.endDate && acc?.plan?.durationDays) {
-    const today = new Date();
-    const expiry = new Date(acc.endDate);
-    const diffTime = expiry.getTime() - today.getTime();
-    const remainingDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-    const baseDuration = acc.plan.durationDays + (acc.plan.bonusDays || 0);
+    const { user, logout } = useAuth();
+    const router = useRouter();
     
-    // If remaining days are greater than the base duration plus a small buffer of 5 days, it's stacked
-    if (remainingDays > baseDuration + 5) {
-      isAccumulated = true;
-    }
-  }
+    useDoubleBackExit();
+    const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
+    const [isLoggingOut, setIsLoggingOut] = useState(false);
+    
+    // History states
+    const [history, setHistory] = useState<any[]>([]);
+    const [historyLoading, setHistoryLoading] = useState(true);
 
-  return (
-    <TVFocusGuide destinations={[]} style={s.container}>
-      <TVCosmicBackground />
+    const loadHistory = useCallback(async () => {
+        if (!user) { setHistoryLoading(false); return; }
+        try {
+            const res = await fetchApi(`${API_ROUTES.HISTORY.LIST}?limit=12`);
+            if (res.success && res.data) {
+                setHistory(res.data.data || res.data.items || res.data || []);
+            }
+        } catch (e) {
+            console.error(e);
+        } finally {
+            setHistoryLoading(false);
+        }
+    }, [user]);
 
-      <View style={s.contentWrapper}>
-        
-        {/* ── Left Side: User Identity Card ── */}
-        <Animated.View entering={FadeIn.duration(800)} style={s.leftSide}>
-          <Text style={s.pageTitle}>Mi Cuenta</Text>
+    useEffect(() => {
+        loadHistory();
+    }, [loadHistory]);
 
-          <View style={s.identityCard}>
-            <View style={s.avatarSection}>
-              <View style={s.avatarBig}>
-                <Text style={s.avatarBigText}>
-                  {user?.name?.charAt(0)?.toUpperCase() || 'U'}
-                </Text>
-              </View>
-              <View style={s.userInfoCol}>
-                <Text style={s.userName} numberOfLines={1}>{user?.name}</Text>
-                <Text style={s.userEmail} numberOfLines={1}>{user?.email}</Text>
-                <Text style={s.userRole}>Rol: {user?.role === 'ADMIN' ? 'Administrador' : 'Cliente'}</Text>
-              </View>
-            </View>
+    const handlePlay = useCallback((item: any) => {
+        const c = item.content || {};
+        if (item.episodeId) {
+            router.push({ pathname: `/(tv)/watch/${c.id}` as any, params: { episodeId: item.episodeId } });
+        } else {
+            router.push(`/(tv)/watch/${c.id}` as any);
+        }
+    }, [router]);
 
-            <View style={s.divider} />
+    const performLogout = async () => {
+        setShowLogoutConfirm(false);
+        setIsLoggingOut(true);
+        await new Promise(r => setTimeout(r, 1800));
+        await logout();
+        router.replace('/(auth)/login');
+    };
 
-            <View style={s.planSection}>
-              <View style={s.planHeader}>
-                <CreditCard size={24} color={isPremium ? Colors.accent : Colors.textMuted} />
-                <Text style={s.planTitle}>
-                  {isPremium ? 'Suscripción Activa' : 'Sin Suscripción Activa'}
-                </Text>
-              </View>
-              {isPremium ? (
-                <View style={s.planDetailsGrid}>
-                  <View style={s.planDetailRow}>
-                    <Text style={s.planDetailLabel}>Plan contratado:</Text>
-                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-                      <Text style={s.planDetailValue}>{acc?.plan?.name || 'Premium'}</Text>
-                      {isAccumulated && (
-                        <View style={s.accumulatedBadge}>
-                          <Text style={s.accumulatedBadgeText}>ACUMULADO</Text>
-                        </View>
-                      )}
-                    </View>
-                  </View>
-                  <View style={s.planDetailRow}>
-                    <Text style={s.planDetailLabel}>Dispositivos:</Text>
-                    <Text style={s.planDetailValue}>Hasta {acc?.maxDevices || 4} simultáneos</Text>
-                  </View>
-                  <View style={s.planDetailRow}>
-                    <Text style={s.planDetailLabel}>Estado de cuenta:</Text>
-                    <Text style={[s.planDetailValue, { color: '#10B981' }]}>Activo</Text>
-                  </View>
-                  {acc?.endDate && (
-                    <View style={s.planDetailRow}>
-                      <Text style={s.planDetailLabel}>Fecha de vencimiento:</Text>
-                      <Text style={s.planDetailValue}>{new Date(acc.endDate).toLocaleDateString()}</Text>
-                    </View>
-                  )}
+    // ── Logout Loading Overlay ─────────────────────────────────────────────
+    if (isLoggingOut) {
+        return (
+            <View style={[s.logoutOverlay, { backgroundColor: '#050814' }]}>
+                <View style={s.logoutCard}>
+                    <Image
+                        source={require('../../assets/logo.png')}
+                        style={s.logoutLogo}
+                        contentFit="contain"
+                    />
+                    <ActivityIndicator size="large" color="#38BDF8" style={{ marginTop: scale(32) }} />
+                    <Text style={s.logoutText}>Cerrando sesión...</Text>
                 </View>
-              ) : (
-                <Text style={s.planDesc}>
-                  Adquiere una suscripción en la plataforma para desbloquear la reproducción en alta definición de todo el catálogo.
-                </Text>
-              )}
             </View>
-          </View>
-        </Animated.View>
+        );
+    }
 
-        {/* ── Right Side: Action Menu ── */}
-        <Animated.View entering={FadeInRight.delay(200).duration(600).springify()} style={s.rightSide}>
-          <Text style={s.menuLabel}>MI ESPACIO</Text>
-          
-          <View style={s.menuList}>
-            <ProfileActionButton
-              label="Mi Lista de Favoritos"
-              icon={User}
-              onPress={() => router.push('/(tv)/favorites')}
-              hasTVPreferredFocus
-            />
-            <ProfileActionButton
-              label="Historial de Reproducción"
-              icon={Settings}
-              onPress={() => router.push('/(tv)/history')}
-            />
-            <ProfileActionButton
-              label="Cerrar Sesión"
-              icon={LogOut}
-              onPress={handleLogout}
-              isDestructive
-            />
-          </View>
-        </Animated.View>
+    const avatarUrl = `https://api.dicebear.com/7.x/bottts/png?seed=${encodeURIComponent(user?.name || 'default')}`;
 
-      </View>
-    </TVFocusGuide>
-  );
+    if (!user) {
+        return (
+            <View style={[s.container, { backgroundColor: '#050814' }]}>
+
+                <View style={s.contentWrapper}>
+                    <View style={s.leftCol}>
+                        <Text style={s.mainTitle}>
+                            Mi Perfil
+                        </Text>
+                        
+                        <View style={s.identityCard}>
+                            <View style={{ alignItems: 'center', gap: scale(20), paddingVertical: scale(20) }}>
+                                <User size={scale(64)} color="#38BDF8" strokeWidth={2.5} />
+                                <Text style={s.emptyHistoryTitle}>No has iniciado sesión</Text>
+                                <Text style={s.emptyHistorySubtitle}>Inicia sesión para acceder a tu perfil y personalizar tu experiencia.</Text>
+                                <MainActionButton
+                                    hasTVPreferredFocus
+                                    isLogin
+                                    title="INICIAR SESIÓN"
+                                    onPress={() => router.push('/(auth)/login')}
+                                />
+                            </View>
+                        </View>
+                    </View>
+                </View>
+            </View>
+        );
+    }
+
+    const acc = user?.endUserAccount;
+    const isPremium = acc?.planId != null;
+    const baseDays = acc?.plan?.durationDays || 30;
+    const bonusDays = acc?.plan?.bonusDays || 0;
+    const totalDays = baseDays + bonusDays;
+    const remainingDays = acc?.endDate ? Math.max(0, Math.ceil((new Date(acc.endDate).getTime() - Date.now()) / (1000 * 60 * 60 * 24))) : 0;
+
+    // Smart client-side calculation to detect stacked/accumulated plans
+    let isAccumulated = false;
+    if (isPremium && acc?.endDate && acc?.plan?.durationDays) {
+        const today = new Date();
+        const expiry = new Date(acc.endDate);
+        const diffTime = expiry.getTime() - today.getTime();
+        const remaining = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+        const baseDuration = acc.plan.durationDays + (acc.plan.bonusDays || 0);
+
+        if (remaining > baseDuration + 5) {
+            isAccumulated = true;
+        }
+    }
+
+    return (
+        <View style={[s.container, { backgroundColor: '#050814' }]}>
+
+            <View style={s.contentWrapper}>
+                {/* Left Side: Profile Identity & Subscription */}
+                <View style={s.leftCol}>
+                    <Text style={s.mainTitle}>
+                        Mi Perfil
+                    </Text>
+
+                    <View style={s.identityCard}>
+                        {/* User Identity Header */}
+                        <View style={s.identityHeader}>
+                            <View style={s.avatarContainer}>
+                                <Image
+                                    source={avatarUrl}
+                                    style={s.avatarImage}
+                                />
+                            </View>
+                            <View style={s.userTextCol}>
+                                <Text style={s.userName} numberOfLines={1}>{user?.name}</Text>
+                                <Text style={s.userEmail} numberOfLines={1}>{user?.email}</Text>
+                            </View>
+                        </View>
+
+                        <View style={s.divider} />
+
+                        {/* Subscription details */}
+                        <View style={s.subSection}>
+                            <View style={s.subHeader}>
+                                <Text style={s.subSectionTitle}>Mi Suscripción</Text>
+                                {isAccumulated && (
+                                    <View style={s.accumulatedBadge}>
+                                        <Text style={s.accumulatedBadgeText}>PLAN ACUMULADO</Text>
+                                    </View>
+                                )}
+                            </View>
+
+                            {isPremium ? (
+                                <View style={s.premiumDetails}>
+                                    <View style={s.detailsGrid}>
+                                        <View style={s.detailRow}>
+                                            <Text style={s.detailLabel}>Plan:</Text>
+                                            <Text style={[s.detailVal, { color: '#38BDF8', fontWeight: '900' }]}>
+                                                {acc?.plan?.name || 'PREMIUM'}
+                                            </Text>
+                                        </View>
+                                        <View style={s.detailRow}>
+                                            <Text style={s.detailLabel}>Pantallas simultáneas:</Text>
+                                            <Text style={s.detailVal}>Hasta {acc?.maxDevices || 4} pantallas</Text>
+                                        </View>
+                                        <View style={s.detailRow}>
+                                            <Text style={s.detailLabel}>Fecha de Vencimiento:</Text>
+                                            <Text style={s.detailVal}>
+                                                {acc?.endDate ? new Date(acc.endDate).toLocaleDateString() : 'N/A'}
+                                            </Text>
+                                        </View>
+                                        <View style={s.detailRow}>
+                                            <Text style={s.detailLabel}>Días Contratados:</Text>
+                                            <Text style={s.detailVal}>{totalDays} días</Text>
+                                        </View>
+                                        <View style={s.detailRow}>
+                                            <Text style={s.detailLabel}>Días Restantes:</Text>
+                                            <Text style={[s.detailVal, { color: '#10B981', fontWeight: '900' }]}>
+                                                {remainingDays} días de servicio
+                                            </Text>
+                                        </View>
+                                        <View style={s.detailRow}>
+                                            <Text style={s.detailLabel}>Estado de cuenta:</Text>
+                                            <Text style={[s.detailVal, { color: '#10B981', fontWeight: '800' }]}>Activo</Text>
+                                        </View>
+                                    </View>
+                                </View>
+                            ) : (
+                                <View style={s.standardDetails}>
+                                    <Text style={s.standardText}>
+                                        Estás usando la cuenta gratuita. Suscríbete para acceder al catálogo en alta definición sin publicidad y habilitar múltiples pantallas simultáneas.
+                                    </Text>
+                                </View>
+                            )}
+                        </View>
+
+                        <View style={s.divider} />
+
+                        {/* Actions */}
+                        <MainActionButton
+                            title="Cerrar Sesión"
+                            onPress={() => setShowLogoutConfirm(true)}
+                        />
+                    </View>
+                </View>
+
+                {/* Right Side: Continue Watching Grid & Content */}
+                <View style={s.rightCol}>
+                    <Text style={s.sectionTitle}>
+                        Continuar Viendo
+                    </Text>
+
+                    {historyLoading ? (
+                        <View style={s.rightCenter}>
+                            <ActivityIndicator size="large" color="#38BDF8" />
+                        </View>
+                    ) : history.length === 0 ? (
+                        <View style={s.emptyHistoryCard}>
+                            <History size={scale(48)} color="rgba(255,255,255,0.15)" />
+                            <Text style={s.emptyHistoryTitle}>Sin historial reciente</Text>
+                            <Text style={s.emptyHistorySubtitle}>
+                                Las películas y series que comiences a ver aparecerán aquí para continuar donde las dejaste.
+                            </Text>
+                        </View>
+                    ) : (
+                        <View style={{ flex: 1 }}>
+                            <FlatList
+                                numColumns={H_COLS}
+                                data={history}
+                                keyExtractor={(item, i) => (item.content?.id || item.id || i.toString())}
+                                contentContainerStyle={s.historyList}
+                                columnWrapperStyle={s.historyRow}
+                                showsVerticalScrollIndicator={false}
+                                renderItem={({ item, index }) => (
+                                    <HistoryItem
+                                        item={item}
+                                        index={index}
+                                        onPlay={() => handlePlay(item)}
+                                    />
+                                )}
+                            />
+                        </View>
+                    )}
+                </View>
+            </View>
+
+            {/* TV-Friendly Logout Confirmation Modal */}
+            <TVModal visible={showLogoutConfirm} onClose={() => setShowLogoutConfirm(false)}>
+                <View style={s.modalContainer}>
+                    <LogOut size={scale(64)} color={Colors.error} style={{ marginBottom: scale(24) }} />
+                    <Text style={s.modalTitle}>Cerrar Sesión</Text>
+                    <Text style={s.modalSubtitle}>¿Estás seguro de que deseas salir de tu cuenta?</Text>
+                    
+                    <View style={s.modalActions}>
+                        <ModalButton
+                            title="CANCELAR"
+                            hasTVPreferredFocus
+                            onPress={() => setShowLogoutConfirm(false)}
+                        />
+                        <ModalButton
+                            title="SÍ, SALIR"
+                            isDestructive
+                            onPress={performLogout}
+                        />
+                    </View>
+                </View>
+            </TVModal>
+        </View>
+    );
 }
 
 // ─── Styles ────────────────────────────────────────────────────────────────────
 const s = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: '#02040A',
-    paddingTop: 140, // Clears the top nav
-    paddingHorizontal: 80,
-  },
-  centerContainer: {
-    justifyContent: 'center',
-    alignItems: 'center',
-    paddingTop: 0,
-  },
+    container: {
+        flex: 1,
+        backgroundColor: '#050B18',
+    },
+    glowCircle: {
+        position: 'absolute',
+        width: scale(600),
+        height: scale(600),
+        borderRadius: scale(300),
+        top: -scale(150),
+        left: -scale(150),
+    },
+    contentWrapper: {
+        flex: 1,
+        flexDirection: 'row',
+        paddingTop: scale(130), // Clears TV top navigation bar
+        paddingHorizontal: scale(60),
+        gap: scale(50),
+    },
 
-  contentWrapper: {
-    flexDirection: 'row',
-    gap: 80,
-  },
+    // Left Column
+    leftCol: {
+        width: scale(460),
+        flexDirection: 'column',
+    },
+    mainTitle: {
+        fontSize: scale(32),
+        fontWeight: '900',
+        color: '#FFFFFF',
+        marginBottom: scale(20),
+        letterSpacing: -0.5,
+    },
+    identityCard: {
+        backgroundColor: 'rgba(255, 255, 255, 0.07)',
+        borderRadius: scale(24),
+        borderWidth: 1.5,
+        borderColor: 'rgba(255, 255, 255, 0.12)',
+        padding: scale(28),
+    },
+    identityHeader: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: scale(18),
+    },
+    avatarContainer: {
+        width: scale(64),
+        height: scale(64),
+        borderRadius: scale(32),
+        borderWidth: 2,
+        borderColor: '#38BDF8',
+        overflow: 'hidden',
+    },
+    avatarImage: {
+        width: '100%',
+        height: '100%',
+    },
+    userTextCol: {
+        flex: 1,
+    },
+    userName: {
+        fontSize: scale(20),
+        fontWeight: '800',
+        color: '#FFFFFF',
+    },
+    userEmail: {
+        fontSize: scale(13),
+        color: '#9CA3AF',
+        marginTop: scale(2),
+    },
+    divider: {
+        height: 1,
+        backgroundColor: '#1E293B',
+        marginVertical: scale(20),
+    },
+    subSection: {
+        gap: scale(14),
+    },
+    subHeader: {
+        flexDirection: 'row',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+    },
+    subSectionTitle: {
+        fontSize: scale(16),
+        fontWeight: '800',
+        color: '#9CA3AF',
+        textTransform: 'uppercase',
+        letterSpacing: 0.5,
+    },
+    planBadge: {
+        paddingHorizontal: scale(10),
+        paddingVertical: scale(4),
+        borderRadius: scale(6),
+        borderWidth: 1,
+    },
+    planBadgePremium: {
+        backgroundColor: 'rgba(56, 189, 248, 0.15)',
+        borderColor: '#38BDF8',
+    },
+    planBadgeStandard: {
+        backgroundColor: 'rgba(156, 163, 175, 0.1)',
+        borderColor: '#9CA3AF',
+    },
+    planBadgeText: {
+        fontSize: scale(10),
+        fontWeight: '900',
+        letterSpacing: 0.5,
+    },
+    planBadgeTextPremium: {
+        color: '#38BDF8',
+    },
+    planBadgeTextStandard: {
+        color: '#9CA3AF',
+    },
+    accumulatedBadge: {
+        backgroundColor: 'rgba(56, 189, 248, 0.15)',
+        borderWidth: 1,
+        borderColor: '#38BDF8',
+        paddingHorizontal: scale(10),
+        paddingVertical: scale(4),
+        borderRadius: scale(6),
+    },
+    accumulatedBadgeText: {
+        fontSize: scale(10),
+        fontWeight: '900',
+        color: '#38BDF8',
+    },
+    premiumDetails: {
+        gap: scale(14),
+    },
+    detailsGrid: {
+        gap: scale(8),
+    },
+    detailRow: {
+        flexDirection: 'row',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+    },
+    detailLabel: {
+        fontSize: scale(13),
+        color: '#6B7280',
+        fontWeight: '600',
+    },
+    detailVal: {
+        fontSize: scale(13),
+        color: '#E2E8F0',
+        fontWeight: '700',
+    },
+    standardDetails: {
+        padding: scale(12),
+        backgroundColor: 'rgba(255,255,255,0.02)',
+        borderRadius: scale(10),
+    },
+    standardText: {
+        fontSize: scale(12),
+        color: '#9CA3AF',
+        lineHeight: scale(18),
+    },
+    logoutBtn: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'center',
+        gap: scale(8),
+        backgroundColor: 'rgba(239, 68, 68, 0.08)',
+        borderWidth: 1.5,
+        borderColor: 'rgba(239, 68, 68, 0.2)',
+        paddingVertical: scale(12),
+        borderRadius: scale(12),
+    },
+    logoutBtnFocused: {
+        backgroundColor: '#EF4444',
+        borderColor: '#EF4444',
+        borderWidth: 2,
+    },
+    logoutBtnText: {
+        fontSize: scale(14),
+        fontWeight: '800',
+        color: '#EF4444',
+    },
+    logoutBtnTextFocused: {
+        color: '#FFFFFF',
+    },
 
-  // ── Left Side (Identity) ──
-  leftSide: {
-    flex: 1,
-    maxWidth: 600,
-  },
-  pageTitle: {
-    fontSize: 52,
-    fontWeight: '900',
-    color: Colors.white,
-    letterSpacing: -1,
-    marginBottom: 40,
-  },
-  identityCard: {
-    backgroundColor: 'rgba(255,255,255,0.03)',
-    borderRadius: 32,
-    padding: 40,
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.08)',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 20 },
-    shadowOpacity: 0.5,
-    shadowRadius: 40,
-  },
-  avatarSection: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 24,
-  },
-  avatarBig: {
-    width: 120,
-    height: 120,
-    borderRadius: 60,
-    backgroundColor: Colors.accent,
-    justifyContent: 'center',
-    alignItems: 'center',
-    shadowColor: Colors.accent,
-    shadowOffset: { width: 0, height: 10 },
-    shadowOpacity: 0.3,
-    shadowRadius: 20,
-  },
-  avatarBigText: {
-    fontSize: 56,
-    fontWeight: '900',
-    color: Colors.black,
-  },
-  userInfoCol: {
-    flex: 1,
-  },
-  userName: {
-    fontSize: 36,
-    fontWeight: '800',
-    color: Colors.white,
-    marginBottom: 6,
-    letterSpacing: -0.5,
-  },
-  userEmail: {
-    fontSize: 20,
-    color: 'rgba(255,255,255,0.5)',
-    fontWeight: '500',
-    marginBottom: 4,
-  },
-  userRole: {
-    fontSize: 16,
-    color: Colors.accent,
-    fontWeight: '700',
-    textTransform: 'uppercase',
-    letterSpacing: 0.5,
-  },
-  divider: {
-    height: 1,
-    backgroundColor: 'rgba(255,255,255,0.08)',
-    marginVertical: 40,
-  },
-  planSection: {
-    gap: 16,
-  },
-  planHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 14,
-  },
-  planTitle: {
-    fontSize: 24,
-    fontWeight: '800',
-    color: Colors.white,
-  },
-  planDesc: {
-    fontSize: 16,
-    color: 'rgba(255,255,255,0.5)',
-    lineHeight: 24,
-  },
-  planDetailsGrid: {
-    gap: 12,
-    marginTop: 8,
-  },
-  planDetailRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingVertical: 8,
-    borderBottomWidth: 1,
-    borderBottomColor: 'rgba(255,255,255,0.04)',
-  },
-  planDetailLabel: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: 'rgba(255,255,255,0.4)',
-  },
-  planDetailValue: {
-    fontSize: 16,
-    fontWeight: '700',
-    color: Colors.white,
-  },
-  accumulatedBadge: {
-    backgroundColor: 'rgba(0, 229, 255, 0.1)',
-    borderWidth: 1,
-    borderColor: 'rgba(0, 229, 255, 0.3)',
-    paddingHorizontal: 10,
-    paddingVertical: 3,
-    borderRadius: 6,
-  },
-  accumulatedBadgeText: {
-    fontSize: 10,
-    fontWeight: '800',
-    color: Colors.accent,
-    letterSpacing: 0.5,
-  },
-  datePill: {
-    alignSelf: 'flex-start',
-    backgroundColor: 'rgba(255,255,255,0.08)',
-    paddingHorizontal: 16,
-    paddingVertical: 8,
-    borderRadius: 12,
-    marginTop: 8,
-  },
-  datePillText: {
-    fontSize: 14,
-    fontWeight: '700',
-    color: Colors.textSecondary,
-  },
+    // Right Column
+    rightCol: {
+        flex: 1,
+        flexDirection: 'column',
+    },
+    sectionTitle: {
+        fontSize: scale(24),
+        fontWeight: '900',
+        color: '#FFFFFF',
+        marginBottom: scale(20),
+        letterSpacing: -0.5,
+    },
+    rightCenter: {
+        flex: 1,
+        justifyContent: 'center',
+        alignItems: 'center',
+    },
+    emptyHistoryCard: {
+        backgroundColor: 'rgba(255, 255, 255, 0.02)',
+        borderRadius: scale(24),
+        borderWidth: 1.5,
+        borderColor: 'rgba(255, 255, 255, 0.05)',
+        padding: scale(40),
+        alignItems: 'center',
+        justifyContent: 'center',
+        gap: scale(14),
+        flex: 1,
+    },
+    emptyHistoryTitle: {
+        fontSize: scale(18),
+        fontWeight: '800',
+        color: '#FFFFFF',
+    },
+    emptyHistorySubtitle: {
+        fontSize: scale(13),
+        color: '#9CA3AF',
+        textAlign: 'center',
+        maxWidth: scale(360),
+        lineHeight: scale(20),
+    },
 
-  // ── Right Side (Menu) ──
-  rightSide: {
-    flex: 1,
-    paddingTop: 8,
-  },
-  menuLabel: {
-    fontSize: 16,
-    fontWeight: '800',
-    color: 'rgba(255,255,255,0.3)',
-    letterSpacing: 3,
-    marginBottom: 24,
-    marginLeft: 8,
-  },
-  menuList: {
-    gap: 16,
-  },
+    // Horizontal History List
+    historyList: {
+        gap: H_GAP,
+        paddingBottom: scale(60),
+    },
+    historyRow: {
+        gap: H_GAP,
+    },
+    historyItemContainer: {
+        width: H_CARD_W,
+    },
+    historyCard: {
+        height: H_CARD_H,
+        borderRadius: scale(12),
+        overflow: 'hidden',
+        borderWidth: 2,
+        borderColor: 'transparent',
+        backgroundColor: '#0F172A',
+        justifyContent: 'flex-end',
+    },
+    historyCardFocused: {
+        borderColor: '#FFFFFF',
+    },
+    historyCardGradient: {
+        justifyContent: 'flex-end',
+        padding: scale(10),
+    },
+    historyCardTitle: {
+        fontSize: scale(12),
+        fontWeight: '700',
+        color: '#FFFFFF',
+    },
+    historyProgressBar: {
+        height: scale(4),
+        backgroundColor: 'rgba(255, 255, 255, 0.2)',
+        borderRadius: scale(2),
+        marginHorizontal: scale(10),
+        marginBottom: scale(10),
+    },
+    historyProgressFill: {
+        height: '100%',
+        backgroundColor: '#38BDF8',
+        borderRadius: scale(2),
+    },
 
-  actionBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 20,
-    backgroundColor: 'rgba(0,0,0,0.3)',
-    paddingHorizontal: 32,
-    paddingVertical: 28,
-    borderRadius: 24,
-    borderWidth: 2,
-    borderColor: 'rgba(255,255,255,0.05)',
-  },
-  actionBtnFocused: {
-    backgroundColor: Colors.white,
-    borderColor: Colors.white,
-    transform: [{ scale: 1.03 }],
-    shadowColor: Colors.white,
-    shadowOffset: { width: 0, height: 10 },
-    shadowOpacity: 0.2,
-    shadowRadius: 20,
-    elevation: 8,
-    zIndex: 10,
-  },
-  actionText: {
-    fontSize: 24,
-    fontWeight: '700',
-    color: Colors.white,
-  },
-  actionTextFocused: {
-    color: Colors.black,
-  },
+    // Modal Confirmation
+    modalContainer: {
+        backgroundColor: 'rgba(5, 8, 15, 0.95)', // Highly opaque dark base to replace BlurView
+        padding: scale(36),
+        borderRadius: scale(24),
+        alignItems: 'center',
+        maxWidth: scale(450),
+        borderWidth: 2,
+        borderColor: 'rgba(255, 255, 255, 0.15)',
+        overflow: 'hidden',
+    },
+    modalTitle: {
+        fontSize: scale(24),
+        fontWeight: '900',
+        color: '#FFFFFF',
+        marginBottom: scale(10),
+    },
+    modalSubtitle: {
+        fontSize: scale(14),
+        color: '#9CA3AF',
+        textAlign: 'center',
+        marginBottom: scale(24),
+        lineHeight: scale(20),
+    },
+    modalActions: {
+        flexDirection: 'row',
+        gap: scale(14),
+    },
+    modalBtn: {
+        backgroundColor: 'rgba(255, 255, 255, 0.08)',
+        paddingHorizontal: scale(24),
+        paddingVertical: scale(10),
+        borderRadius: scale(10),
+        borderWidth: 1,
+        borderColor: 'rgba(255, 255, 255, 0.1)',
+    },
+    modalBtnFocused: {
+        backgroundColor: '#FFFFFF',
+        borderColor: '#FFFFFF',
+        borderWidth: 3,
+        transform: [{ scale: 1.08 }],
+        elevation: 10,
+    },
+    modalBtnText: {
+        fontSize: scale(16),
+        fontWeight: '800',
+        color: '#D1D5DB',
+    },
+    modalBtnTextFocused: {
+        color: '#000000',
+    },
+    modalBtnDestructive: {
+        backgroundColor: 'rgba(239,68,68,0.08)',
+        paddingHorizontal: scale(24),
+        paddingVertical: scale(10),
+        borderRadius: scale(10),
+        borderWidth: 3,
+        borderColor: 'transparent',
+    },
+    modalBtnDestructiveFocused: {
+        backgroundColor: '#EF4444',
+        borderColor: '#FFFFFF',
+        borderWidth: 3,
+        transform: [{ scale: 1.08 }],
+        elevation: 10,
+    },
+    modalBtnDestructiveText: {
+        fontSize: scale(14),
+        fontWeight: '800',
+        color: '#EF4444',
+    },
+    modalBtnDestructiveTextFocused: {
+        color: '#FFFFFF',
+    },
 
-  actionBtnDestructive: {
-    marginTop: 24,
-    backgroundColor: 'rgba(239,68,68,0.05)',
-    borderColor: 'rgba(239,68,68,0.2)',
-  },
-  actionBtnDestructiveFocused: {
-    backgroundColor: Colors.error,
-    borderColor: Colors.error,
-    shadowColor: Colors.error,
-  },
-  actionTextDestructive: {
-    color: Colors.error,
-  },
-
-  // ── Empty State ──
-  emptyCard: {
-    backgroundColor: 'rgba(255,255,255,0.03)',
-    padding: 60,
-    borderRadius: 32,
-    alignItems: 'center',
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.08)',
-    maxWidth: 600,
-  },
-  emptyTitle: {
-    fontSize: 32,
-    fontWeight: '800',
-    color: Colors.white,
-    marginBottom: 16,
-  },
-  emptySubtitle: {
-    fontSize: 18,
-    color: 'rgba(255,255,255,0.5)',
-    textAlign: 'center',
-    marginBottom: 40,
-    lineHeight: 26,
-  },
+    // Logout screen overlay
+    logoutOverlay: {
+        ...StyleSheet.absoluteFillObject,
+        flex: 1,
+        justifyContent: 'center',
+        alignItems: 'center',
+        zIndex: 9999,
+    },
+    logoutCard: {
+        alignItems: 'center',
+        justifyContent: 'center',
+        gap: scale(8),
+    },
+    logoutLogo: {
+        width: scale(180),
+        height: scale(56),
+        opacity: 0.9,
+    },
+    logoutText: {
+        marginTop: scale(16),
+        fontSize: scale(16),
+        fontWeight: '600',
+        color: 'rgba(255,255,255,0.5)',
+        letterSpacing: 0.5,
+    },
 });

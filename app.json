@@ -4,10 +4,10 @@
     "slug": "nuba-tv",
     "version": "1.0.0",
     "orientation": "landscape",
-    "icon": "./assets/icon.png",
+    "icon": "./assets/images/icon.png",
     "userInterfaceStyle": "dark",
     "splash": {
-      "image": "./assets/splash.png",
+      "image": "./assets/images/splash-icon.png",
       "resizeMode": "contain",
       "backgroundColor": "#030612"
     },
@@ -17,20 +17,24 @@
     },
     "android": {
       "adaptiveIcon": {
-        "foregroundImage": "./assets/adaptive-icon.png",
+        "foregroundImage": "./assets/images/adaptive-icon.png",
         "backgroundColor": "#030612"
       },
       "package": "com.nuba.tv",
       "intentFilters": [
         {
-          "action": "android.intent.action.MAIN",
+          "action": "MAIN",
           "category": [
-            "android.intent.category.LEANBACK_LAUNCHER"
+            "LEANBACK_LAUNCHER",
+            "LAUNCHER"
           ]
         }
       ],
+      "tvBanner": "./assets/images/banner-tv.png",
       "isTV": true,
-      "versionCode": 1
+      "usesCleartextTraffic": true,
+      "versionCode": 1,
+      "permissions": []
     },
     "plugins": [
       "expo-router",
@@ -40,11 +44,19 @@
         {
           "initialOrientation": "LANDSCAPE"
         }
-      ]
+      ],
+      "react-native-video"
     ],
     "experiments": {
       "typedRoutes": true
     },
-    "scheme": "nubatv"
+    "scheme": "nubatv",
+    "extra": {
+      "router": {},
+      "eas": {
+        "projectId": "ae75e932-09e6-4ead-be02-6c1bac886919"
+      }
+    },
+    "owner": "lalsja"
   }
 }

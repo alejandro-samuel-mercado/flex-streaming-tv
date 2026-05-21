@@ -4,26 +4,31 @@ import { useLocalSearchParams, useRouter } from 'expo-router';
 import { Colors } from '../../../theme/colors';
 import TVPlayer from '../../../components/tv/TVPlayer';
 import { fetchApi } from '../../../lib/api-client';
-import { API_ROUTES } from '../../../lib/api-routes';
+import { API_ROUTES, API_BASE_URL } from '../../../lib/api-routes';
 
 export default function WatchScreen() {
   const { id, episodeId } = useLocalSearchParams<{ id: string; episodeId?: string }>();
   const router = useRouter();
   
   const [streamUrl, setStreamUrl] = useState<string | null>(null);
+  const [streamData, setStreamData] = useState<any>(null);
   const [metadata, setMetadata] = useState<any>(null);
   const [startPosition, setStartPosition] = useState(0);
   const [loading, setLoading] = useState(true);
+  const [content, setContent] = useState<any>(null);
+  const [currentEpisode, setCurrentEpisode] = useState<any>(null);
 
   useEffect(() => {
     const requestAccess = async () => {
       try {
-        // Fetch content details for OSD (Title, Subtitle)
+        // Fetch content details
         const contentRes = await fetchApi(`${API_ROUTES.CONTENT.BASE}/${id}`);
         let targetTitle = 'Contenido';
         let targetSubtitle = '';
+        let epObj = null;
         
         if (contentRes.success && contentRes.data) {
+          setContent(contentRes.data);
           targetTitle = contentRes.data.translations?.[0]?.title || 'Video';
           
           if (episodeId && contentRes.data.seasons) {
@@ -31,28 +36,38 @@ export default function WatchScreen() {
             for (const s of contentRes.data.seasons) {
               const ep = s.episodes?.find((e: any) => e.id === episodeId);
               if (ep) {
+                epObj = { ...ep, seasonNumber: s.number };
                 targetSubtitle = `T${s.number} E${ep.number} - ${ep.translations?.[0]?.title || ''}`;
                 break;
               }
             }
+          } else if (contentRes.data.type !== 'MOVIE' && contentRes.data.seasons?.[0]?.episodes?.[0]) {
+             epObj = { ...contentRes.data.seasons[0].episodes[0], seasonNumber: contentRes.data.seasons[0].number };
+             targetSubtitle = `T${epObj.seasonNumber} E${epObj.number} - ${epObj.translations?.[0]?.title || ''}`;
           }
         }
 
+        setCurrentEpisode(epObj);
         setMetadata({ title: targetTitle, subtitle: targetSubtitle });
 
         // Request Stream URL
-        const body = episodeId ? { contentId: id, episodeId } : { contentId: id };
+        const targetEpId = epObj?.id || episodeId;
+        const body = targetEpId ? { contentId: id, episodeId: targetEpId } : { contentId: id };
         const accessRes = await fetchApi(API_ROUTES.STREAM.REQUEST_ACCESS, {
           method: 'POST',
           body: JSON.stringify(body),
         });
 
-        if (accessRes.success && accessRes.data?.url) {
-          setStreamUrl(accessRes.data.url);
+        if (accessRes.success && accessRes.data && accessRes.data.token && accessRes.data.videoFileId) {
+          const { token, videoFileId, masterPlaylist } = accessRes.data;
+          setStreamData(accessRes.data);
+          const filename = masterPlaylist ? masterPlaylist.split('/').pop() : 'master.m3u8';
+          const url = `${API_BASE_URL}/stream/hls/${videoFileId}/${token}/${filename}`;
+          setStreamUrl(url);
           
           // Fetch existing watch progress
           try {
-            const histRes = await fetchApi(`${API_ROUTES.HISTORY.BASE}/${id}${episodeId ? `?episodeId=${episodeId}` : ''}`);
+            const histRes = await fetchApi(`${API_ROUTES.HISTORY.BASE}/${id}${targetEpId ? `?episodeId=${targetEpId}` : ''}`);
             if (histRes.success && histRes.data?.progress) {
               setStartPosition(histRes.data.progress);
             }
@@ -76,7 +91,7 @@ export default function WatchScreen() {
     requestAccess();
   }, [id, episodeId, router]);
 
-  if (loading || !streamUrl || !metadata) {
+  if (loading || !streamUrl || !metadata || !content) {
     return (
       <View style={s.loader}>
         <ActivityIndicator size="large" color={Colors.primary} />
@@ -87,8 +102,9 @@ export default function WatchScreen() {
   return (
     <View style={s.container}>
       <TVPlayer
-        contentId={id}
-        episodeId={episodeId}
+        content={content}
+        currentEpisode={currentEpisode}
+        streamData={streamData}
         videoUrl={streamUrl}
         title={metadata.title}
         subtitle={metadata.subtitle}
