@@ -5,19 +5,17 @@ import { Colors } from '../../theme/colors';
 import TVHeroBanner from '../../components/tv/TVHeroBanner';
 import TVFilmRow from '../../components/tv/TVFilmRow';
 import TVPlatformRow from '../../components/tv/TVPlatformRow';
-import TVCosmicBackground from '../../components/tv/TVCosmicBackground';
 import { TVHomeSkeleton } from '../../components/tv/TVSkeleton';
 import { fetchApi } from '../../lib/api-client';
 import { API_ROUTES } from '../../lib/api-routes';
 import { useAuth } from '../../context/AuthContext';
-import { useRouter, useLocalSearchParams } from 'expo-router';
+import { useRouter } from 'expo-router';
 import { scale } from '../../lib/scale';
 import { useDoubleBackExit } from '../../hooks/useDoubleBackExit';
-// react-native-reanimated imports removed for TV stability
+import { cachedFetch } from '../../lib/cache';
 
 const TVFocusGuide = (require('react-native') as any).TVFocusGuideView ?? View;
 
-// Map of section type → friendly label for the banner sectionLabel prop
 const SECTION_LABELS: Record<string, string> = {
     '':       'Inicio',
     'MOVIE':  'Películas',
@@ -27,29 +25,37 @@ const SECTION_LABELS: Record<string, string> = {
     'KDRAMA': 'K-Dramas',
 };
 
+const HOME_CACHE_KEY = 'home-data';
+
 export default function HomeScreen() {
     const { user } = useAuth();
     const router = useRouter();
-    const lastActivityTime = useRef(Date.now());
     
     useDoubleBackExit();
-    // type param set by TVTopNav when navigating to explore (for section banner)
-    // On home.tsx we don't have a type, so default to ''
+
     const [data, setData] = useState<any>(null);
     const [continueWatching, setContinueWatching] = useState<any[]>([]);
+    // loading = true only on first visit (no cache). On repeat visits, cache
+    // populates `data` synchronously before the first render so we skip the skeleton.
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
 
-    const loadHome = useCallback(async () => {
+    const loadHome = useCallback(async (forceRefresh = false) => {
         try {
-            setLoading(true);
             setError(null);
 
-            const res = await fetchApi(API_ROUTES.HOMEPAGE.DATA);
+            const res = await cachedFetch(
+                HOME_CACHE_KEY,
+                () => fetchApi(API_ROUTES.HOMEPAGE.DATA),
+                // onUpdate: called when background revalidation finishes with fresh data
+                (fresh) => {
+                    if (fresh?.success && fresh.data) setData(fresh.data);
+                },
+            );
 
-            if (res && res.success && res.data) {
+            if (res?.success && res.data) {
                 setData(res.data);
-            } else {
+            } else if (!res?.success) {
                 setError(res?.message || 'La respuesta del servidor no fue exitosa.');
             }
         } catch (e: any) {
@@ -59,15 +65,13 @@ export default function HomeScreen() {
         }
     }, []);
 
-    // Load continue watching in background (non-blocking)
+    // Load continue watching in background (non-blocking, not cached since it's user-specific)
     useEffect(() => {
         if (!user) return;
         fetchApi(API_ROUTES.HISTORY.CONTINUE)
             .then(async (historyRes: any) => {
                 if (historyRes?.success && Array.isArray(historyRes.data)) {
-                    // Show basic history immediately
                     setContinueWatching(historyRes.data);
-                    // Then enrich with details in background
                     const detailed = await Promise.all(
                         historyRes.data.slice(0, 10).map(async (item: any) => {
                             try {
@@ -87,10 +91,12 @@ export default function HomeScreen() {
 
     useEffect(() => { loadHome(); }, [loadHome]);
 
-    if (loading) {
+
+
+    // Only show skeleton on first load when there's no data yet
+    if (loading && !data) {
         return (
             <View style={s.container}>
-                <TVCosmicBackground />
                 <TVHomeSkeleton />
             </View>
         );
@@ -102,7 +108,7 @@ export default function HomeScreen() {
                 <Text style={s.errorTitle}>No se pudo conectar con el servidor</Text>
                 <Text style={s.errorText}>{error}</Text>
                 <View style={{ marginTop: 24 }}>
-                    <TVFocusable style={s.retryBtn} hasTVPreferredFocus onPress={loadHome}>
+                    <TVFocusable style={s.retryBtn} hasTVPreferredFocus onPress={() => loadHome(true)}>
                         <Text style={s.retryText}>REINTENTAR</Text>
                     </TVFocusable>
                 </View>
@@ -118,17 +124,31 @@ export default function HomeScreen() {
             const item = f.content || f;
             if (!item) return null;
             const backdrop = item.thumbnails?.find((t: any) => t.type === 'BACKDROP') || item.thumbnails?.find((t: any) => t.type === 'BANNER');
-            return {
-                id: item.id,
-                title: item.translations?.[0]?.title || '',
-                description: item.translations?.[0]?.description || '',
-                backdropUrl: backdrop?.url,
-                rating: item.rating,
-                year: item.releaseYear,
-                ageRating: item.ageRating?.code,
-                type: item.type,
-                genres: item.genres?.map((g: any) => g.genre?.name || g.name),
-            };
+                const itemType = item.type;
+                let isUpcoming = item.status ? (item.status !== 'READY' && item.status !== 'ACTIVE') : false;
+
+                // Only perform array-length checks if the arrays are actually returned by the backend
+                if (itemType === 'MOVIE' && (item.videos !== undefined || item.videoFiles !== undefined)) {
+                    const videoCount = (item.videos?.length || 0) + (item.videoFiles?.length || 0);
+                    if (videoCount === 0) isUpcoming = true;
+                } else if ((itemType === 'SERIES' || itemType === 'ANIME') && (item.seasons !== undefined || item.episodes !== undefined)) {
+                    const epCount = (item.seasons?.length || 0) + (item.episodes?.length || 0);
+                    if (epCount === 0) isUpcoming = true;
+                }
+
+                return {
+                    id: item.id,
+                    title: item.translations?.[0]?.title || '',
+                    description: item.translations?.[0]?.description || '',
+                    backdropUrl: backdrop?.url,
+                    rating: item.rating,
+                    year: item.releaseYear,
+                    ageRating: item.ageRating?.code,
+                    type: itemType,
+                    status: item.status,
+                    genres: item.genres?.map((g: any) => g.genre?.name || g.name),
+                    isUpcoming,
+                };
         })
         .filter((s: any) => s && !!s.backdropUrl);
 
@@ -149,7 +169,6 @@ export default function HomeScreen() {
 
     return (
         <TVFocusGuide destinations={[]} style={s.container}>
-            <TVCosmicBackground />
             <ScrollView
                 showsVerticalScrollIndicator={false}
                 contentContainerStyle={{ paddingBottom: scale(100) }}
@@ -202,7 +221,7 @@ export default function HomeScreen() {
 }
 
 const s = StyleSheet.create({
-    container: { flex: 1, backgroundColor: 'transparent' },
+    container: { flex: 1, backgroundColor: '#050814' },
     loader: { flex: 1, justifyContent: 'center', alignItems: 'center' },
     errorContainer: { flex: 1, justifyContent: 'center', alignItems: 'center', paddingHorizontal: 40 },
     errorTitle: { fontSize: 22, fontWeight: '800', color: Colors.white, marginBottom: 8 },
@@ -210,7 +229,7 @@ const s = StyleSheet.create({
     retryBtn: { paddingHorizontal: 32, paddingVertical: 12, backgroundColor: Colors.white, borderRadius: 24 },
     retryText: { color: Colors.black, fontWeight: '800', fontSize: scale(14) },
     rowsContainer: {
-        marginTop: scale(-140),
+        marginTop: scale(-160),
         zIndex: 10,
     },
 });

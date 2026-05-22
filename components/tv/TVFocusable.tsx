@@ -4,12 +4,9 @@ import {
   StyleSheet,
   ViewStyle,
   PressableProps,
+  Animated,
+  Easing,
 } from 'react-native';
-import Animated, {
-  useSharedValue,
-  useAnimatedStyle,
-  withTiming,
-} from 'react-native-reanimated';
 import { Colors } from '../../theme/colors';
 import { TV } from '../../theme/tv';
 
@@ -28,8 +25,7 @@ interface TVFocusableProps extends Omit<PressableProps, 'style'> {
  * TVFocusable — Universal focusable wrapper for all TV interactive elements.
  * Applies:
  *   - 4px white border when focused
- *   - Cyan glow shadow
- *   - Scale animation (1.08 default)
+ *   - Scale animation (1.08 default) using highly-performant native Animated API
  *   - 150ms transitions
  */
 const TVFocusable = React.forwardRef<any, TVFocusableProps>(
@@ -49,25 +45,31 @@ const TVFocusable = React.forwardRef<any, TVFocusableProps>(
     ref
   ) => {
     const [isFocused, setIsFocused] = useState(false);
-    const scale = useSharedValue(1);
+    const scaleAnim = useRef(new Animated.Value(1)).current;
 
     const handleFocus = useCallback(() => {
       setIsFocused(true);
       if (!disableScale) {
-        scale.value = withTiming(scaleOnFocus, { duration: TV.focusAnimDuration });
+        Animated.timing(scaleAnim, {
+          toValue: scaleOnFocus,
+          duration: TV.focusAnimDuration,
+          useNativeDriver: true,
+          easing: Easing.out(Easing.ease),
+        }).start();
       }
       onFocusChange?.(true);
-    }, [disableScale, scaleOnFocus, onFocusChange]);
+    }, [disableScale, scaleOnFocus, onFocusChange, scaleAnim]);
 
     const handleBlur = useCallback(() => {
       setIsFocused(false);
-      scale.value = withTiming(1, { duration: TV.focusAnimDuration });
+      Animated.timing(scaleAnim, {
+        toValue: 1,
+        duration: TV.focusAnimDuration,
+        useNativeDriver: true,
+        easing: Easing.out(Easing.ease),
+      }).start();
       onFocusChange?.(false);
-    }, [onFocusChange]);
-
-    const animatedStyle = useAnimatedStyle(() => ({
-      transform: [{ scale: scale.value }],
-    }));
+    }, [onFocusChange, scaleAnim]);
 
     const flatStyle = Array.isArray(style) ? StyleSheet.flatten(style) : style;
 
@@ -84,7 +86,7 @@ const TVFocusable = React.forwardRef<any, TVFocusableProps>(
         <Animated.View
           style={[
             flatStyle,
-            animatedStyle,
+            { transform: [{ scale: scaleAnim }] },
             isFocused && [
               s.focused,
               { borderRadius: focusBorderRadius },
@@ -106,10 +108,6 @@ const s = StyleSheet.create({
   focused: {
     borderWidth: 4,
     borderColor: '#FFFFFF',
-    shadowColor: '#000000',
-    shadowOffset: { width: 0, height: 10 },
-    shadowOpacity: 0.6,
-    shadowRadius: 16,
-    elevation: 20,
+    // Removed shadows for optimal Android TV layout performance
   },
 });

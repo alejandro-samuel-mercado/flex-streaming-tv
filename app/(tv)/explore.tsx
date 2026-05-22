@@ -19,6 +19,7 @@ import { useDoubleBackExit } from '../../hooks/useDoubleBackExit';
 import { scale } from '../../lib/scale';
 import { Image } from 'expo-image';
 import { setPendingExploreFilters, consumePendingExploreFilters } from '../../lib/explore-filters';
+import { cachedFetch } from '../../lib/cache';
 
 const SECTION_LABELS: Record<string, string> = {
     '': 'Inicio',
@@ -239,16 +240,31 @@ export default function ExploreScreen() {
             type: item.type,
         })), []);
 
+    // ── Fetch category view data — cached per type ──────────────────────────
     useEffect(() => {
         if (!currentType || forceFilterGrid) return;
+        const CAT_KEY = `explore-category-${currentType}`;
+
         setCatLoading(true);
-        Promise.all([
-            fetchApi(API_ROUTES.HOMEPAGE.DATA),
-            fetchApi(`${API_ROUTES.CONTENT.LIST}?type=${currentType}&sort=popular&limit=30`),
-            fetchApi(`${API_ROUTES.CONTENT.LIST}?type=${currentType}&sort=recent&limit=10`),
-            fetchApi(API_ROUTES.CATEGORIES.GENRES),
-            fetchApi(API_ROUTES.PLATFORMS.LIST),
-        ]).then(async ([featRes, popRes, allRes, genresRes, platformsRes]: any[]) => {
+
+        cachedFetch(
+            CAT_KEY,
+            () => Promise.all([
+                fetchApi(API_ROUTES.HOMEPAGE.DATA),
+                fetchApi(`${API_ROUTES.CONTENT.LIST}?type=${currentType}&sort=popular&limit=30`),
+                fetchApi(`${API_ROUTES.CONTENT.LIST}?type=${currentType}&sort=recent&limit=10`),
+                fetchApi(API_ROUTES.CATEGORIES.GENRES),
+                fetchApi(API_ROUTES.PLATFORMS.LIST),
+            ]).then(async ([featRes, popRes, allRes, genresRes, platformsRes]: any[]) => {
+                return { featRes, popRes, allRes, genresRes, platformsRes };
+            }),
+            // onUpdate: apply fresh data in background silently
+            (fresh: any) => applyCategoryData(fresh),
+        ).then((result: any) => {
+            applyCategoryData(result);
+        }).catch(console.error).finally(() => setCatLoading(false));
+
+        async function applyCategoryData({ featRes, popRes, allRes, genresRes, platformsRes }: any) {
             // Hero
             let validSlides: any[] = [];
             const extractSlides = (items: any[]) => {
@@ -285,44 +301,32 @@ export default function ExploreScreen() {
                 }
             }
 
-            // Fallback si no hay suficientes destacados con fondo horizontal, busca en los populares del mismo tipo
             if (validSlides.length === 0 && popRes?.success && Array.isArray(popRes.data)) {
-                // Como el listado de la API no devuelve los BACKDROP por optimización, obtenemos los detalles de los primeros 5
                 const topPopular = popRes.data.slice(0, 5);
                 const detailedPopular = await Promise.all(
                     topPopular.map(async (item: any) => {
                         try {
                             const detailRes = await fetchApi(`${API_ROUTES.CONTENT.BASE}/${item.id}`);
-                            if (detailRes?.success && detailRes.data) {
-                                return detailRes.data;
-                            }
-                        } catch (e) {
-                            console.error("Error fetching detail for banner:", e);
-                        }
+                            if (detailRes?.success && detailRes.data) return detailRes.data;
+                        } catch (e) {}
                         return item;
                     })
                 );
                 validSlides = extractSlides(detailedPopular).slice(0, 5);
             }
 
-            // Fallback final: si aún no hay slides (ej. categoría sin backdrops en absoluto), usa tendencias generales
             if (validSlides.length === 0 && featRes?.success && featRes.data) {
                 const anyTrending = featRes.data.trending || featRes.data.featured || [];
-                if (Array.isArray(anyTrending)) {
-                    validSlides = extractSlides(anyTrending).slice(0, 5);
-                }
+                if (Array.isArray(anyTrending)) validSlides = extractSlides(anyTrending).slice(0, 5);
             }
 
             setCatHeroSlides(validSlides);
-            // All row
             if (allRes?.success && Array.isArray(allRes.data)) setCatAllItems(mapToCards(allRes.data));
-            // Genres
             const genreList = genresRes?.success && Array.isArray(genresRes.data) ? genresRes.data : [];
             setCatGenres(genreList);
-            // Platforms
             const platformList = platformsRes?.success && Array.isArray(platformsRes.data) ? platformsRes.data : [];
             setCatPlatforms(platformList);
-            // Genre rows (top 8)
+
             const genreDataArr = await Promise.all(
                 genreList.slice(0, 8).map((g: any) =>
                     fetchApi(`${API_ROUTES.CONTENT.LIST}?type=${currentType}&genreId=${g.id}&sort=popular&limit=10`)
@@ -333,7 +337,7 @@ export default function ExploreScreen() {
             const gMap: Record<string, any[]> = {};
             genreDataArr.forEach(({ id, data }) => { if (data.length > 0) gMap[id] = mapToCards(data); });
             setCatGenreRows(gMap);
-            // Platform rows (top 5)
+
             const platDataArr = await Promise.all(
                 platformList.slice(0, 5).map((p: any) =>
                     fetchApi(`${API_ROUTES.CONTENT.LIST}?type=${currentType}&platformId=${p.id}&sort=popular&limit=10`)
@@ -344,15 +348,25 @@ export default function ExploreScreen() {
             const pMap: Record<string, any[]> = {};
             platDataArr.forEach(({ id, data }) => { if (data.length > 0) pMap[id] = mapToCards(data); });
             setCatPlatformRows(pMap);
-        }).catch(console.error).finally(() => setCatLoading(false));
+        }
     }, [currentType, mapToCards, forceFilterGrid]);
 
-    // ── Fetch metadata ────────────────────────────────────────────────────────
+    // ── Fetch metadata (genres & platforms) — cached globally ────────────────
     useEffect(() => {
-        Promise.all([
-            fetchApi(API_ROUTES.CATEGORIES.GENRES),
-            fetchApi(API_ROUTES.PLATFORMS.LIST),
-        ]).then(([gRes, pRes]: any[]) => {
+        const METADATA_KEY = 'explore-metadata';
+        cachedFetch(
+            METADATA_KEY,
+            () => Promise.all([
+                fetchApi(API_ROUTES.CATEGORIES.GENRES),
+                fetchApi(API_ROUTES.PLATFORMS.LIST),
+            ]).then(([gRes, pRes]) => ({ gRes, pRes })),
+            // onUpdate with fresh data
+            ({ gRes, pRes }: any) => applyMetadata(gRes, pRes),
+        ).then(({ gRes, pRes }: any) => {
+            applyMetadata(gRes, pRes);
+        }).finally(() => setMetaReady(true));
+
+        function applyMetadata(gRes: any, pRes: any) {
             const g: FilterOption[] = [{ label: 'Todos los géneros', value: '' }];
             if (Array.isArray(gRes.data))
                 gRes.data.forEach((x: any) => g.push({ label: x.name, value: x.id }));
@@ -367,7 +381,7 @@ export default function ExploreScreen() {
                 const found = raw.find((x: any) => x.slug === urlSlug);
                 if (found) setPlatformId(found.id);
             }
-        }).finally(() => setMetaReady(true));
+        }
     }, [urlSlug]);
 
     // ── Build URL ─────────────────────────────────────────────────────────────
@@ -531,7 +545,8 @@ export default function ExploreScreen() {
     // CATEGORY VIEW — Banner + rows by genre/platform
     // ════════════════════════════════════════════════════════════════════════════
     if (showCategoryView) {
-        if (catLoading) {
+        // Only show full-screen loading on cold start (no cached data)
+        if (catLoading && catAllItems.length === 0) {
             return (
                 <View style={s.root}>
                     <TVCosmicBackground />

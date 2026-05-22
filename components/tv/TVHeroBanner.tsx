@@ -1,14 +1,7 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { View, Text, StyleSheet, Dimensions, Pressable } from 'react-native';
+import { View, Text, StyleSheet, Dimensions, Pressable, Animated, Easing } from 'react-native';
 import { Image } from 'expo-image';
-import { LinearGradient } from 'expo-linear-gradient';
-import Animated, {
-    useSharedValue,
-    useAnimatedStyle,
-    withTiming,
-    withSequence,
-} from 'react-native-reanimated';
-import { Play, Plus, Star } from 'lucide-react-native';
+import { Play, Plus, Star, Clock } from 'lucide-react-native';
 import { Colors } from '../../theme/colors';
 import { TV } from '../../theme/tv';
 import { resolveImageUrl } from '../../lib/api-routes';
@@ -27,7 +20,9 @@ interface Slide {
     year?: number;
     ageRating?: string;
     type?: string;
+    status?: string;
     genres?: string[];
+    isUpcoming?: boolean;
 }
 
 interface TVHeroBannerProps {
@@ -39,49 +34,67 @@ interface TVHeroBannerProps {
 // ─── Play Button ──────────────────────────────────────────────────────────────
 function PlayButton({ item, onPress }: { item: Slide; onPress: () => void }) {
     const [focused, setFocused] = useState(false);
-    const scaleAnim = useSharedValue(1);
-
-    const animStyle = useAnimatedStyle(() => ({
-        transform: [{ scale: withTiming(scaleAnim.value, { duration: 130 }) }],
-    }));
+    const scaleAnim = useRef(new Animated.Value(1)).current;
+    const isUpcoming = !!item.isUpcoming;
 
     return (
-        <Animated.View style={animStyle}>
-            <Pressable
-                focusable
-                onFocus={() => { setFocused(true); scaleAnim.value = 1.07; }}
-                onBlur={() => { setFocused(false); scaleAnim.value = 1; }}
-                onPress={onPress}
-                style={[s.playBtn, focused && s.playBtnFocused]}
-            >
-                <Play size={scale(18)} color={focused ? Colors.white : Colors.black} fill={focused ? Colors.white : Colors.black} />
-                <Text style={[s.playBtnText, focused && s.playBtnTextFocused]}>Reproducir</Text>
-            </Pressable>
-        </Animated.View>
+        <Pressable
+            focusable
+            hasTVPreferredFocus
+            onFocus={() => {
+                setFocused(true);
+                Animated.timing(scaleAnim, { toValue: 1.07, duration: 150, useNativeDriver: true, easing: Easing.out(Easing.ease) }).start();
+            }}
+            onBlur={() => {
+                setFocused(false);
+                Animated.timing(scaleAnim, { toValue: 1, duration: 150, useNativeDriver: true, easing: Easing.out(Easing.ease) }).start();
+            }}
+            onPress={isUpcoming ? undefined : onPress}
+            style={[
+                s.playBtn, 
+                focused && s.playBtnFocused
+            ]}
+        >
+            <Animated.View style={[{ transform: [{ scale: scaleAnim }], flexDirection: 'row', alignItems: 'center', gap: scale(10) }]}>
+                {isUpcoming ? (
+                    <Clock size={scale(18)} color={focused ? Colors.white : Colors.black} />
+                ) : (
+                    <Play size={scale(18)} color={focused ? Colors.white : Colors.black} fill={focused ? Colors.white : Colors.black} />
+                )}
+                <Text style={[s.playBtnText, focused && s.playBtnTextFocused]}>
+                    {isUpcoming ? 'Próximamente' : 'Reproducir'}
+                </Text>
+            </Animated.View>
+        </Pressable>
     );
 }
 
 // ─── Add Button ───────────────────────────────────────────────────────────────
 function AddButton({ onPress }: { onPress: () => void }) {
     const [focused, setFocused] = useState(false);
-    const scaleAnim = useSharedValue(1);
-
-    const animStyle = useAnimatedStyle(() => ({
-        transform: [{ scale: withTiming(scaleAnim.value, { duration: 130 }) }],
-    }));
+    const scaleAnim = useRef(new Animated.Value(1)).current;
 
     return (
-        <Animated.View style={animStyle}>
-            <Pressable
-                focusable
-                onFocus={() => { setFocused(true); scaleAnim.value = 1.12; }}
-                onBlur={() => { setFocused(false); scaleAnim.value = 1; }}
-                onPress={onPress}
-                style={[s.addBtn, focused && s.addBtnFocused]}
-            >
+        <Pressable
+            focusable
+            onFocus={() => {
+                setFocused(true);
+                Animated.timing(scaleAnim, { toValue: 1.12, duration: 150, useNativeDriver: true, easing: Easing.out(Easing.ease) }).start();
+            }}
+            onBlur={() => {
+                setFocused(false);
+                Animated.timing(scaleAnim, { toValue: 1, duration: 150, useNativeDriver: true, easing: Easing.out(Easing.ease) }).start();
+            }}
+            onPress={onPress}
+            style={[
+                s.addBtn, 
+                focused && s.addBtnFocused
+            ]}
+        >
+            <Animated.View style={[{ transform: [{ scale: scaleAnim }], justifyContent: 'center', alignItems: 'center' }]}>
                 <Plus size={scale(22)} color={focused ? Colors.black : Colors.white} strokeWidth={2.5} />
-            </Pressable>
-        </Animated.View>
+            </Animated.View>
+        </Pressable>
     );
 }
 
@@ -109,7 +122,7 @@ export default function TVHeroBanner({ slides, sectionLabel }: TVHeroBannerProps
     const item = slides[currentIndex];
 
     const handlePlay = () => {
-        if (item.id) router.push(`/(tv)/watch/${item.id}` as any);
+        if (item.id) router.push(`/(tv)/film/${item.id}` as any);
     };
 
     const handleAdd = () => {
@@ -132,18 +145,8 @@ export default function TVHeroBanner({ slides, sectionLabel }: TVHeroBannerProps
                 />
             </View>
 
-            {/* Cinematic gradients blending into the homogeneous dark slate-blue background */}
-            <LinearGradient
-                colors={['rgba(10, 17, 40, 0.0)', 'rgba(10, 17, 40, 0.95)', '#050814']}
-                locations={[0.4, 0.85, 1]}
-                style={StyleSheet.absoluteFill}
-            />
-            <LinearGradient
-                colors={['rgba(5, 8, 20, 0.9)', 'rgba(10, 17, 40, 0.4)', 'rgba(0,0,0,0)']}
-                start={{ x: 0, y: 0.5 }}
-                end={{ x: 0.5, y: 0.5 }}
-                style={StyleSheet.absoluteFill}
-            />
+            {/* Fast translucent overlay to replace heavy LinearGradients */}
+            <View style={[StyleSheet.absoluteFill, { backgroundColor: 'rgba(10, 17, 40, 0.65)' }]} />
 
             {/* Content: bottom-left aligned */}
             <View style={s.content}>
@@ -284,7 +287,7 @@ const s = StyleSheet.create({
         borderRadius: scale(10),
     },
     playBtnFocused: {
-        backgroundColor: Colors.accent,
+        backgroundColor: '#0097A7', // Celeste oscuro
     },
     playBtnText: {
         fontSize: scale(17),

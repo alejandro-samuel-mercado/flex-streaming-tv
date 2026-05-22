@@ -1,9 +1,9 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
-import { View, Text, StyleSheet, Pressable, BackHandler, ActivityIndicator, Platform, FlatList, ScrollView } from 'react-native';
+import { View, Text, StyleSheet, Pressable, BackHandler, ActivityIndicator, Platform, FlatList, ScrollView, findNodeHandle } from 'react-native';
 import Video, { VideoRef, SelectedTrackType, TextTrackType } from 'react-native-video';
 import { LinearGradient } from 'expo-linear-gradient';
 import Animated, { useSharedValue, useAnimatedStyle, withTiming, runOnJS } from 'react-native-reanimated';
-import { Play, Pause, RotateCcw, RotateCw, SkipForward, SkipBack, AlertCircle, List, MessageSquare, Languages, X, Check } from 'lucide-react-native';
+import { Play, Pause, RotateCcw, RotateCw, SkipForward, SkipBack, AlertCircle, List, MessageSquare, Languages, X, Check, RefreshCw } from 'lucide-react-native';
 import { useRouter } from 'expo-router';
 import { Colors } from '../../theme/colors';
 import { TV } from '../../theme/tv';
@@ -64,6 +64,7 @@ function getLangLabel(lang?: string, title?: string, name?: string, fallback?: s
 
 const TVFocusGuide = (require('react-native') as any).TVFocusGuideView ?? View;
 const TVEvtHandler: any = (require('react-native') as any).TVEventHandler ?? null;
+const TVPressable = Pressable as any;
 
 interface TVPlayerProps {
     content: any;
@@ -78,7 +79,7 @@ interface TVPlayerProps {
 function TVPlaybackButton({ onPress, onFocus, children, style, hasTVPreferredFocus }: any) {
     const [focused, setFocused] = useState(false);
     return (
-        <Pressable
+        <TVPressable
             focusable
             hasTVPreferredFocus={hasTVPreferredFocus}
             onFocus={() => { setFocused(true); onFocus?.(); }}
@@ -91,14 +92,14 @@ function TVPlaybackButton({ onPress, onFocus, children, style, hasTVPreferredFoc
             ]}
         >
             {typeof children === 'function' ? children(focused) : children}
-        </Pressable>
+        </TVPressable>
     );
 }
 
 function TVMenuButton({ onPress, onFocus, icon: Icon, label, hasTVPreferredFocus }: any) {
     const [focused, setFocused] = useState(false);
     return (
-        <Pressable
+        <TVPressable
             focusable
             hasTVPreferredFocus={hasTVPreferredFocus}
             onFocus={() => { setFocused(true); onFocus?.(); }}
@@ -108,14 +109,14 @@ function TVMenuButton({ onPress, onFocus, icon: Icon, label, hasTVPreferredFocus
         >
             <Icon size={scale(20)} color={focused ? Colors.black : Colors.white} />
             {label && <Text style={[s.menuBtnText, focused && s.menuBtnTextFocused]}>{label}</Text>}
-        </Pressable>
+        </TVPressable>
     );
 }
 
 const TVSidebarItem = React.forwardRef<any, any>(function TVSidebarItem({ onPress, style, children }, ref) {
     const [focused, setFocused] = useState(false);
     return (
-        <Pressable
+        <TVPressable
             ref={ref}
             focusable
             onFocus={() => setFocused(true)}
@@ -124,14 +125,117 @@ const TVSidebarItem = React.forwardRef<any, any>(function TVSidebarItem({ onPres
             style={[style, focused && s.itemFocusedWrapper]}
         >
             {typeof children === 'function' ? children(focused) : children}
-        </Pressable>
+        </TVPressable>
     );
 });
+
+// ─── Focusable Progress Bar ────────────────────────────────────────────────────
+// Left/Right D-Pad to seek 10s increments. Press select to seek to touched position.
+const SEEK_STEP_MS = 60_000; // 1 minute per D-Pad press/hold on progress bar
+
+function ProgressBar({
+    positionMs,
+    durationMs,
+    onSeek,
+    onStartSeeking,
+    onStopSeeking,
+    formatTime,
+}: {
+    positionMs: number;
+    durationMs: number;
+    onSeek: (newMs: number) => void;
+    onStartSeeking: () => void;
+    onStopSeeking: () => void;
+    formatTime: (ms: number) => string;
+}) {
+    const [focused, setFocused] = useState(false);
+    const progressBarRef = useRef<any>(null);
+    const seekIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+    const positionMsRef = useRef(positionMs);
+    const durationMsRef = useRef(durationMs);
+    const onSeekRef = useRef(onSeek);
+
+    useEffect(() => {
+        positionMsRef.current = positionMs;
+        durationMsRef.current = durationMs;
+        onSeekRef.current = onSeek;
+    }, [positionMs, durationMs, onSeek]);
+
+    const startContinuousSeek = (direction: 'left' | 'right') => {
+        if (seekIntervalRef.current) return; // already seeking
+        onStartSeeking();
+        // Seek immediately on first press
+        const doSeek = () => {
+            if (direction === 'left') {
+                onSeekRef.current(Math.max(0, positionMsRef.current - SEEK_STEP_MS));
+            } else {
+                onSeekRef.current(Math.min(durationMsRef.current, positionMsRef.current + SEEK_STEP_MS));
+            }
+        };
+        doSeek();
+        // Then repeat every 300ms while held
+        seekIntervalRef.current = setInterval(doSeek, 300);
+    };
+
+    const stopContinuousSeek = () => {
+        if (seekIntervalRef.current) {
+            clearInterval(seekIntervalRef.current);
+            seekIntervalRef.current = null;
+        }
+        onStopSeeking();
+        // Restore focus to main progress bar
+        setTimeout(() => progressBarRef.current?.focus?.(), 50);
+    };
+
+    const pct = durationMs > 0 ? (positionMs / durationMs) * 100 : 0;
+
+    return (
+        <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+            {/* Invisible Left Dummy: captures D-Pad Left when progress bar is focused */}
+            {focused && (
+                <Pressable
+                    focusable
+                    onFocus={() => startContinuousSeek('left')}
+                    onBlur={stopContinuousSeek}
+                    style={{ width: 1, height: 1, position: 'absolute', left: -1 }}
+                />
+            )}
+
+            <TVPressable
+                ref={progressBarRef}
+                focusable
+                onFocus={() => { setFocused(true); onStartSeeking(); }}
+                onBlur={() => { setFocused(false); onStopSeeking(); }}
+                style={[s.progressContainer, focused && s.progressContainerFocused]}
+            >
+                <Text style={s.timeText}>{formatTime(positionMs)}</Text>
+                <View style={s.progressBarTrack}>
+                    <View style={[s.progressBarFill, { width: `${pct}%` as any }]} />
+                    <View style={[s.progressThumb, { left: `${pct}%` as any }, focused && s.progressThumbFocused]} />
+                </View>
+                <Text style={s.timeText}>{formatTime(durationMs)}</Text>
+            </TVPressable>
+
+            {/* Invisible Right Dummy: captures D-Pad Right when progress bar is focused */}
+            {focused && (
+                <Pressable
+                    focusable
+                    onFocus={() => startContinuousSeek('right')}
+                    onBlur={stopContinuousSeek}
+                    style={{ width: 1, height: 1, position: 'absolute', right: -1 }}
+                />
+            )}
+        </View>
+    );
+}
 
 export default function TVPlayer({ content, currentEpisode, streamData, videoUrl, title, subtitle, startPosition = 0 }: TVPlayerProps) {
     const router = useRouter();
     const videoRef = useRef<VideoRef>(null);
     const webVideoRef = useRef<HTMLVideoElement>(null);
+    // Ref to the transparent overlay Pressable — needed to retain focus when OSD is hidden
+    const overlayRef = useRef<any>(null);
 
     const contentId = content?.id;
     const episodeId = currentEpisode?.id;
@@ -179,6 +283,10 @@ export default function TVPlayer({ content, currentEpisode, streamData, videoUrl
     const hideOSD = useCallback(() => {
         osdVisibleRef.current = false;
         setOsdVisible(false);
+        // Explicitly shift focus back to the overlay Pressable so key events continue to propagate
+        setTimeout(() => {
+            overlayRef.current?.focus?.();
+        }, 80);
     }, []);
 
     const showOSD = useCallback(() => {
@@ -353,6 +461,30 @@ export default function TVPlayer({ content, currentEpisode, streamData, videoUrl
     const goNext = () => { if (!hasNext) return; router.replace(`/(tv)/watch/${contentId}?episodeId=${allEpisodes[currentIdx + 1].id}` as any); };
     const goPrev = () => { if (!hasPrev) return; router.replace(`/(tv)/watch/${contentId}?episodeId=${allEpisodes[currentIdx - 1].id}` as any); };
 
+    // Unified seek to absolute position (works on web and native)
+    const seekToPosition = useCallback((newPosMs: number) => {
+        const clamped = Math.max(0, Math.min(newPosMs, durationMillis));
+        if (Platform.OS === 'web') {
+            const video = webVideoRef.current;
+            if (video) video.currentTime = clamped / 1000;
+        } else {
+            videoRef.current?.seek(clamped / 1000);
+        }
+        positionMillisRef.current = clamped;
+        setPositionMillis(clamped);
+    }, [durationMillis]);
+
+    const restart = useCallback(() => {
+        showOSD();
+        seekToPosition(0);
+        // If paused, start playing
+        if (!isPlayingRef.current) {
+            isPlayingRef.current = true;
+            setIsPlaying(true);
+            if (Platform.OS === 'web') webVideoRef.current?.play().catch(() => {});
+        }
+    }, [seekToPosition, showOSD]);
+
     // Back button handling
     useEffect(() => {
         const backAction = () => {
@@ -368,28 +500,30 @@ export default function TVPlayer({ content, currentEpisode, streamData, videoUrl
         return () => backHandler.remove();
     }, [activeMenu, router, showOSD, hideOSD, osdOpacity]);
 
-    // D-Pad → show OSD controls (user navigates with D-Pad once controls are visible)
+    // Refs to sync player handler state without re-creating the event listener constantly
+    const activeMenuRef = useRef(activeMenu);
+    const showOSDRef = useRef(showOSD);
+    const durationMillisRef = useRef(durationMillis);
+
     useEffect(() => {
-        if (!TVEvtHandler) return;
-        const tvEventHandler = new TVEvtHandler();
-        tvEventHandler.enable(null, (_cmp: any, evt: any) => {
-            if (!evt) return;
-            const { eventType } = evt;
-            if (['up', 'down', 'left', 'right', 'select', 'playPause'].includes(eventType)) {
-                if (!osdVisibleRef.current && !activeMenu) {
-                    showOSD();
-                }
-            }
-        });
-        return () => tvEventHandler.disable();
-    }, [activeMenu, showOSD]);
+        activeMenuRef.current = activeMenu;
+        showOSDRef.current = showOSD;
+        durationMillisRef.current = durationMillis;
+    }, [activeMenu, showOSD, durationMillis]);
+
+    // D-Pad: show OSD on directional keys, seek on left/right when OSD is hidden.
+    // Instead of TVEventHandler (which is broken in some RN builds), we use dummy focusable elements
+    // around the main overlay. This is a bulletproof method for capturing D-Pad events.
+
+
 
     // When a sidebar menu opens, move focus to its first item
     useEffect(() => {
         if (activeMenu && firstSidebarItemRef.current) {
+            // Delay must be long enough for the sidebar to fully mount and ref to be assigned
             const timer = setTimeout(() => {
                 firstSidebarItemRef.current?.focus?.();
-            }, 100);
+            }, 250);
             return () => clearTimeout(timer);
         }
     }, [activeMenu]);
@@ -561,23 +695,25 @@ export default function TVPlayer({ content, currentEpisode, streamData, videoUrl
                     onEnd={onEnd}
                     onBuffer={onBuffer}
                     onError={() => { setError(true); setLoading(false); }}
-                    progressUpdateInterval={1000}
+                    progressUpdateInterval={2000}
                     selectedAudioTrack={
                         selectedAudio === 'auto'
                             ? { type: SelectedTrackType.SYSTEM }
                             : typeof selectedAudio === 'number'
                                 ? { type: SelectedTrackType.INDEX, value: selectedAudio }
-                                : { type: SelectedTrackType.LANGUAGE, value: selectedAudio as string }
+                                : typeof selectedAudio === 'string' && selectedAudio !== 'auto'
+                                    ? { type: SelectedTrackType.LANGUAGE, value: selectedAudio }
+                                    : { type: SelectedTrackType.SYSTEM }
                     }
                     selectedTextTrack={
                         selectedSub === 'off'
                             ? { type: SelectedTrackType.DISABLED }
-                            : typeof selectedSub === 'string' && selectedSub.startsWith('LANG:')
-                                ? { type: SelectedTrackType.LANGUAGE, value: selectedSub.replace('LANG:', '') }
-                                : typeof selectedSub === 'string' && selectedSub.startsWith('TITLE:')
-                                    ? { type: SelectedTrackType.TITLE, value: selectedSub.replace('TITLE:', '') }
-                                    : typeof selectedSub === 'number'
-                                        ? { type: SelectedTrackType.INDEX, value: selectedSub }
+                            : typeof selectedSub === 'number'
+                                ? { type: SelectedTrackType.INDEX, value: selectedSub }
+                                : typeof selectedSub === 'string' && selectedSub.startsWith('LANG:')
+                                    ? { type: SelectedTrackType.LANGUAGE, value: selectedSub.replace('LANG:', '') }
+                                    : typeof selectedSub === 'string' && selectedSub.startsWith('TITLE:')
+                                        ? { type: SelectedTrackType.TITLE, value: selectedSub.replace('TITLE:', '') }
                                         : { type: SelectedTrackType.DISABLED }
                     }
                     {...(externalTextTracks.length > 0 ? { textTracks: externalTextTracks } : {})}
@@ -585,10 +721,13 @@ export default function TVPlayer({ content, currentEpisode, streamData, videoUrl
                     controls={false}
                     playInBackground={false}
                     bufferConfig={{
-                        minBufferMs: 15000,
-                        maxBufferMs: 50000,
-                        bufferForPlaybackMs: 2500,
-                        bufferForPlaybackAfterRebufferMs: 5000
+                        // Increased buffer sizes to prevent mid-playback stops on slow servers.
+                        // ExoPlayer will pre-download up to 2 minutes ahead, providing a large
+                        // cushion against bandwidth drops and high server processing latency.
+                        minBufferMs: 30000,              // Start buffering ahead: 30s (was 15s)
+                        maxBufferMs: 120000,             // Max pre-buffer: 2 minutes (was 50s)
+                        bufferForPlaybackMs: 2500,       // Resume playback after: 2.5s of data
+                        bufferForPlaybackAfterRebufferMs: 8000, // After rebuffer stall: need 8s (was 5s)
                     }}
                 />
             )}
@@ -606,12 +745,55 @@ export default function TVPlayer({ content, currentEpisode, streamData, videoUrl
                 </View>
             )}
 
-            <Pressable
+            {/* Invisible Dummy components to catch D-Pad presses when overlay is focused */}
+            {!osdVisible && !activeMenu && (
+                <>
+                    <Pressable
+                        focusable
+                        onFocus={() => {
+                            showOSD();
+                            overlayRef.current?.focus?.();
+                        }}
+                        style={{ position: 'absolute', top: -1, width: 1, height: 1 }}
+                    />
+                    <Pressable
+                        focusable
+                        onFocus={() => {
+                            showOSD();
+                            overlayRef.current?.focus?.();
+                        }}
+                        style={{ position: 'absolute', bottom: -1, width: 1, height: 1 }}
+                    />
+                    <Pressable
+                        focusable
+                        onFocus={() => {
+                            showOSD();
+                            seek('backward');
+                            setTimeout(() => overlayRef.current?.focus?.(), 50);
+                        }}
+                        style={{ position: 'absolute', left: -1, width: 1, height: 1 }}
+                    />
+                    <Pressable
+                        focusable
+                        onFocus={() => {
+                            showOSD();
+                            seek('forward');
+                            setTimeout(() => overlayRef.current?.focus?.(), 50);
+                        }}
+                        style={{ position: 'absolute', right: -1, width: 1, height: 1 }}
+                    />
+                </>
+            )}
+
+            {/* Transparent focused overlay to intercept all remote presses when OSD is hidden */}
+            <TVPressable
+                ref={overlayRef}
                 style={StyleSheet.absoluteFill}
                 focusable={!osdVisible && !activeMenu}
                 hasTVPreferredFocus={!osdVisible && !activeMenu}
                 onPress={() => {
-                    if (!activeMenu) togglePlayPause();
+                    // Center/Select button only opens the OSD menu — does NOT toggle play/pause
+                    if (!activeMenu) showOSD();
                 }}
             />
 
@@ -657,6 +839,17 @@ export default function TVPlayer({ content, currentEpisode, streamData, videoUrl
                                         {(f: boolean) => <SkipBack size={scale(24)} color={f ? Colors.black : Colors.white} fill={f ? Colors.black : Colors.white} />}
                                     </TVPlaybackButton>
                                 )}
+                                
+                                {/* Restart Button - Placed exactly before the rewind 20s button */}
+                                <TVPlaybackButton onPress={restart} onFocus={showOSD} style={{ marginRight: scale(16) }}>
+                                    {(f: boolean) => (
+                                        <View style={{ alignItems: 'center' }}>
+                                            <RefreshCw size={scale(24)} color={f ? Colors.black : Colors.white} />
+                                            <Text style={[s.skipText, f && s.skipTextFocused]}>Inicio</Text>
+                                        </View>
+                                    )}
+                                </TVPlaybackButton>
+
                                 <TVPlaybackButton onPress={() => seek('backward')} onFocus={showOSD}>
                                     {(f: boolean) => (
                                         <View style={{ alignItems: 'center' }}>
@@ -689,15 +882,32 @@ export default function TVPlayer({ content, currentEpisode, streamData, videoUrl
                             <View style={s.sideControls} />
                         </View>
 
-                        {/* Progress Bar */}
-                        <View style={s.progressContainer}>
-                            <Text style={s.timeText}>{formatTime(position)}</Text>
-                            <View style={s.progressBarTrack}>
-                                <View style={[s.progressBarFill, { width: `${progressPct}%` }]} />
-                                <View style={[s.progressThumb, { left: `${progressPct}%` }]} />
-                            </View>
-                            <Text style={s.timeText}>{formatTime(duration)}</Text>
-                        </View>
+                        {/* Progress Bar — focusable, left/right to seek continuously */}
+                        <ProgressBar
+                            positionMs={position}
+                            durationMs={duration}
+                            onSeek={(newMs) => { seekToPosition(newMs); }}
+                            onStartSeeking={() => {
+                                // Pause OSD auto-hide timer during scrubbing so menu stays visible
+                                if (osdTimer.current) {
+                                    clearTimeout(osdTimer.current);
+                                    osdTimer.current = null;
+                                }
+                                if (!osdVisibleRef.current) {
+                                    showOSD();
+                                }
+                            }}
+                            onStopSeeking={() => {
+                                // Restart auto-hide timer after seeking is done
+                                if (osdTimer.current) clearTimeout(osdTimer.current);
+                                osdTimer.current = setTimeout(() => {
+                                    osdOpacity.value = withTiming(0, { duration: 300 }, (finished) => {
+                                        if (finished) runOnJS(hideOSD)();
+                                    });
+                                }, TV.playerOSDHideMs);
+                            }}
+                            formatTime={formatTime}
+                        />
                     </LinearGradient>
                 </Animated.View>
             )}
@@ -714,7 +924,7 @@ export default function TVPlayer({ content, currentEpisode, streamData, videoUrl
                             </Text>
                         </View>
 
-                        <TVFocusGuide destinations={[]} style={{ flex: 1 }} autoFocus>
+                        <TVFocusGuide destinations={[]} style={{ flex: 1 }}>
                             {activeMenu === 'episodes' && (
                                 <FlatList
                                     data={allEpisodes}
@@ -759,12 +969,16 @@ export default function TVPlayer({ content, currentEpisode, streamData, videoUrl
                                         )}
                                     </TVSidebarItem>
                                     {subsList.map((sub: any, i: number) => {
-                                        // Prioritize Language matching for ExoPlayer, fallback to Index.
-                                        let value: string | number = sub.index !== undefined ? sub.index : i;
-                                        if (sub.language) {
+                                        // Prefer numeric index for maximum ExoPlayer compatibility
+                                        let value: string | number;
+                                        if (sub.index !== undefined && typeof sub.index === 'number') {
+                                            value = sub.index;
+                                        } else if (sub.language) {
                                             value = `LANG:${sub.language}`;
                                         } else if (sub.title && typeof sub.title === 'string') {
                                             value = `TITLE:${sub.title}`;
+                                        } else {
+                                            value = i;
                                         }
 
                                         const isSelected = selectedSub === value;
@@ -785,7 +999,8 @@ export default function TVPlayer({ content, currentEpisode, streamData, videoUrl
                             {activeMenu === 'audio' && (
                                 <ScrollView contentContainerStyle={{ padding: scale(24), gap: scale(16) }}>
                                     {audioList.map((aud: any, i: number) => {
-                                        const value = aud.index !== undefined ? aud.index : (aud.language || aud.label);
+                                        // Always prefer numeric index for ExoPlayer audio track switching
+                                        const value: number | string = typeof aud.index === 'number' ? aud.index : (aud.language || i);
                                         const isSelected = selectedAudio === value || (selectedAudio === 'auto' && aud.isDefault);
                                         return (
                                             <TVSidebarItem
@@ -842,11 +1057,13 @@ const s = StyleSheet.create({
     menuBtnText: { fontSize: scale(16), fontWeight: '700', color: Colors.white },
     menuBtnTextFocused: { color: Colors.black },
 
-    progressContainer: { flexDirection: 'row', alignItems: 'center', gap: scale(20) },
+    progressContainer: { flexDirection: 'row', alignItems: 'center', gap: scale(20), paddingVertical: scale(8), paddingHorizontal: scale(12), borderRadius: scale(12), borderWidth: 2, borderColor: 'transparent' },
+    progressContainerFocused: { borderColor: 'rgba(255,255,255,0.5)', backgroundColor: 'rgba(255,255,255,0.05)' },
     timeText: { fontSize: scale(18), fontWeight: '600', color: Colors.white, fontVariant: ['tabular-nums'], width: scale(80), textAlign: 'center' },
     progressBarTrack: { flex: 1, height: scale(8), backgroundColor: 'rgba(255,255,255,0.2)', borderRadius: scale(4), justifyContent: 'center' },
     progressBarFill: { position: 'absolute', left: 0, top: 0, bottom: 0, backgroundColor: Colors.accent, borderRadius: scale(4) },
     progressThumb: { position: 'absolute', width: scale(20), height: scale(20), borderRadius: scale(10), backgroundColor: Colors.white, marginLeft: scale(-10) },
+    progressThumbFocused: { width: scale(28), height: scale(28), borderRadius: scale(14), backgroundColor: Colors.accent, marginLeft: scale(-14) },
 
     // Sidebar
     sidebarOverlay: { ...StyleSheet.absoluteFillObject, flexDirection: 'row', justifyContent: 'flex-end', backgroundColor: 'rgba(0,0,0,0.6)' },

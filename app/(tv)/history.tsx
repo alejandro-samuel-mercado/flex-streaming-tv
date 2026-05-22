@@ -14,6 +14,32 @@ import { API_ROUTES, resolveImageUrl } from '../../lib/api-routes';
 import { useAuth } from '../../context/AuthContext';
 import { scale } from '../../lib/scale';
 import { useDoubleBackExit } from '../../hooks/useDoubleBackExit';
+import TVModal from '../../components/tv/TVModal';
+
+// ─── Modal Button Component ──────────────────────────────────────────────────
+function ModalButton({ onPress, title, isDestructive = false, hasTVPreferredFocus = false }: any) {
+    const [focused, setFocused] = useState(false);
+    return (
+        <Pressable
+            focusable
+            hasTVPreferredFocus={hasTVPreferredFocus}
+            onFocus={() => setFocused(true)}
+            onBlur={() => setFocused(false)}
+            onPress={onPress}
+            style={[
+                isDestructive ? s.modalBtnDestructive : s.modalBtn,
+                focused && (isDestructive ? s.modalBtnDestructiveFocused : s.modalBtnFocused)
+            ]}
+        >
+            <Text style={[
+                isDestructive ? s.modalBtnDestructiveText : s.modalBtnText,
+                focused && (isDestructive ? s.modalBtnDestructiveTextFocused : s.modalBtnTextFocused)
+            ]}>
+                {title}
+            </Text>
+        </Pressable>
+    );
+}
 
 const { width: SW, height: SH } = Dimensions.get('window');
 const COLS = 5;
@@ -100,11 +126,12 @@ export default function HistoryScreen() {
     useDoubleBackExit();
     const [data, setData] = useState<any[]>([]);
     const [loading, setLoading] = useState(true);
+    const [idToRemove, setIdToRemove] = useState<string | null>(null);
 
     const loadData = useCallback(async () => {
         if (!user) { setLoading(false); return; }
         try {
-            const res = await fetchApi(`${API_ROUTES.HISTORY.LIST}?limit=30`);
+            const res = await fetchApi(`${API_ROUTES.HISTORY.LIST}?limit=15`);
             if (res.success && res.data) {
                 setData(res.data.data || res.data.items || res.data || []);
             }
@@ -126,12 +153,16 @@ export default function HistoryScreen() {
         }
     }, [router]);
 
-    const handleRemove = useCallback(async (item: any) => {
+    const handleRemove = useCallback((item: any) => {
         const c = item.content || {};
+        setIdToRemove(c.id);
+    }, []);
+
+    const confirmRemove = useCallback(async (contentId: string) => {
         // Optimistic remove
-        setData(prev => prev.filter(i => (i.content?.id || i.id) !== c.id));
+        setData(prev => prev.filter(i => (i.content?.id || i.id) !== contentId));
         try {
-            await fetchApi(`${API_ROUTES.HISTORY.BASE}/${c.id}`, { method: 'DELETE' });
+            await fetchApi(`${API_ROUTES.HISTORY.BASE}/${contentId}`, { method: 'DELETE' });
         } catch (e) {
             console.error(e);
             loadData(); // restore on error
@@ -196,6 +227,33 @@ export default function HistoryScreen() {
                     />
                 )}
             </View>
+
+            {/* TV Confirmation Modal */}
+            <TVModal visible={idToRemove !== null} onClose={() => setIdToRemove(null)}>
+                <View style={s.modalContainer}>
+                    <Trash2 size={scale(64)} color={Colors.error} style={{ marginBottom: scale(24) }} />
+                    <Text style={s.modalTitle}>¿Quitar del Historial?</Text>
+                    <Text style={s.modalSubtitle}>¿Estás seguro de que deseas eliminar este título de tu historial de visualización?</Text>
+
+                    <View style={s.modalActions}>
+                        <ModalButton
+                            title="CANCELAR"
+                            hasTVPreferredFocus
+                            onPress={() => setIdToRemove(null)}
+                        />
+                        <ModalButton
+                            title="SÍ, ELIMINAR"
+                            isDestructive
+                            onPress={() => {
+                                if (idToRemove) {
+                                    confirmRemove(idToRemove);
+                                    setIdToRemove(null);
+                                }
+                            }}
+                        />
+                    </View>
+                </View>
+            </TVModal>
         </View>
     );
 }
@@ -270,4 +328,79 @@ const s = StyleSheet.create({
     center: { flex: 1, justifyContent: 'center', alignItems: 'center', gap: scale(16) },
     emptyTitle: { fontSize: scale(24), fontWeight: '800', color: Colors.white },
     emptySubtitle: { fontSize: scale(16), color: Colors.textSecondary, textAlign: 'center', maxWidth: scale(400) },
+
+    // Modal Confirmation
+    modalContainer: {
+        backgroundColor: 'rgba(5, 8, 15, 0.95)',
+        padding: scale(36),
+        borderRadius: scale(24),
+        alignItems: 'center',
+        maxWidth: scale(450),
+        borderWidth: 2,
+        borderColor: 'rgba(255, 255, 255, 0.15)',
+        overflow: 'hidden',
+    },
+    modalTitle: {
+        fontSize: scale(24),
+        fontWeight: '900',
+        color: '#FFFFFF',
+        marginBottom: scale(10),
+    },
+    modalSubtitle: {
+        fontSize: scale(14),
+        color: '#9CA3AF',
+        textAlign: 'center',
+        marginBottom: scale(24),
+        lineHeight: scale(20),
+    },
+    modalActions: {
+        flexDirection: 'row',
+        gap: scale(14),
+    },
+    modalBtn: {
+        backgroundColor: 'rgba(255, 255, 255, 0.08)',
+        paddingHorizontal: scale(24),
+        paddingVertical: scale(10),
+        borderRadius: scale(10),
+        borderWidth: 3,
+        borderColor: 'transparent',
+    },
+    modalBtnFocused: {
+        backgroundColor: '#FFFFFF',
+        borderColor: '#FFFFFF',
+        borderWidth: 3,
+        transform: [{ scale: 1.08 }],
+        elevation: 10,
+    },
+    modalBtnText: {
+        fontSize: scale(14),
+        fontWeight: '800',
+        color: '#D1D5DB',
+    },
+    modalBtnTextFocused: {
+        color: '#000000',
+    },
+    modalBtnDestructive: {
+        backgroundColor: 'rgba(239,68,68,0.08)',
+        paddingHorizontal: scale(24),
+        paddingVertical: scale(10),
+        borderRadius: scale(10),
+        borderWidth: 3,
+        borderColor: 'transparent',
+    },
+    modalBtnDestructiveFocused: {
+        backgroundColor: '#EF4444',
+        borderColor: '#FFFFFF',
+        borderWidth: 3,
+        transform: [{ scale: 1.08 }],
+        elevation: 10,
+    },
+    modalBtnDestructiveText: {
+        fontSize: scale(14),
+        fontWeight: '800',
+        color: '#EF4444',
+    },
+    modalBtnDestructiveTextFocused: {
+        color: '#FFFFFF',
+    },
 });

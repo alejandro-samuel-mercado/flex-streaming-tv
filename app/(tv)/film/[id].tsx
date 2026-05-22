@@ -380,7 +380,12 @@ export default function FilmDetailScreen() {
             )}
 
             {/* Episodes Horizontal Scroll */}
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 20, paddingBottom: 8 }}>
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              style={{ overflow: 'visible' }}
+              contentContainerStyle={{ gap: 20, paddingTop: scale(16), paddingBottom: scale(16) }}
+            >
               {(() => {
                 const contentBackdrop = content.thumbnails?.find((t: any) => t.type === 'BACKDROP')?.url;
                 const contentPoster = content.thumbnails?.find((t: any) => t.type === 'POSTER')?.url;

@@ -141,8 +141,8 @@ const s = StyleSheet.create({
   },
   listContent: {
     paddingHorizontal: scale(56),
-    paddingBottom: scale(16),
-    paddingTop: scale(8),
+    paddingBottom: scale(36),
+    paddingTop: scale(36),
   },
   viewMoreCard: {
     justifyContent: 'center',

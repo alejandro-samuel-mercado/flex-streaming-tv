@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { View, Text, StyleSheet, Pressable, ActivityIndicator, FlatList, Dimensions } from 'react-native';
-import { LogOut, User, History, Play } from 'lucide-react-native';
+import { LogOut, User, History, Play, Trash2 } from 'lucide-react-native';
 import { Image } from 'expo-image';
 import { useRouter } from 'expo-router';
 import Animated from 'react-native-reanimated';
@@ -73,12 +73,14 @@ function MainActionButton({ onPress, title, isLogin = false, hasTVPreferredFocus
 
 // ─── History Item Component (Optimized for D-Pad) ──────────────────────────────
 function HistoryItem({
-    item, index, onPlay,
+    item, index, onPlay, onRemove,
 }: {
     item: any; index: number;
     onPlay: () => void;
+    onRemove: () => void;
 }) {
     const [cardFocused, setCardFocused] = useState(false);
+    const [removeFocused, setRemoveFocused] = useState(false);
     const c = item.content || {};
     const backdrop = c.thumbnails?.find((t: any) => t.type === 'POSTER')?.url
         || c.thumbnails?.find((t: any) => t.type === 'BACKDROP')?.url
@@ -124,6 +126,18 @@ function HistoryItem({
                     </View>
                 )}
             </Pressable>
+
+            {/* Delete button */}
+            <Pressable
+                focusable
+                onFocus={() => setRemoveFocused(true)}
+                onBlur={() => setRemoveFocused(false)}
+                onPress={onRemove}
+                style={[s.removeBtn, removeFocused && s.removeBtnFocused]}
+            >
+                <Trash2 size={scale(13)} color={removeFocused ? '#FFF' : '#EF4444'} />
+                <Text style={[s.removeBtnText, removeFocused && s.removeBtnTextFocused]}>Quitar</Text>
+            </Pressable>
         </View>
     );
 }
@@ -136,6 +150,7 @@ export default function ProfileScreen() {
     useDoubleBackExit();
     const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
     const [isLoggingOut, setIsLoggingOut] = useState(false);
+    const [idToRemove, setIdToRemove] = useState<string | null>(null);
     
     // History states
     const [history, setHistory] = useState<any[]>([]);
@@ -144,7 +159,7 @@ export default function ProfileScreen() {
     const loadHistory = useCallback(async () => {
         if (!user) { setHistoryLoading(false); return; }
         try {
-            const res = await fetchApi(`${API_ROUTES.HISTORY.LIST}?limit=12`);
+            const res = await fetchApi(`${API_ROUTES.HISTORY.LIST}?limit=15`);
             if (res.success && res.data) {
                 setHistory(res.data.data || res.data.items || res.data || []);
             }
@@ -167,6 +182,20 @@ export default function ProfileScreen() {
             router.push(`/(tv)/watch/${c.id}` as any);
         }
     }, [router]);
+
+    const handleRemoveHistory = useCallback((item: any) => {
+        const c = item.content || {};
+        setIdToRemove(c.id);
+    }, []);
+
+    const confirmRemoveHistory = useCallback(async (contentId: string) => {
+        setHistory(prev => prev.filter(i => (i.content?.id || i.id) !== contentId));
+        try {
+            await fetchApi(`${API_ROUTES.HISTORY.BASE}/${contentId}`, { method: 'DELETE' });
+        } catch {
+            loadHistory();
+        }
+    }, [loadHistory]);
 
     const performLogout = async () => {
         setShowLogoutConfirm(false);
@@ -369,6 +398,7 @@ export default function ProfileScreen() {
                                         item={item}
                                         index={index}
                                         onPlay={() => handlePlay(item)}
+                                        onRemove={() => handleRemoveHistory(item)}
                                     />
                                 )}
                             />
@@ -394,6 +424,29 @@ export default function ProfileScreen() {
                             title="SÍ, SALIR"
                             isDestructive
                             onPress={performLogout}
+                        />
+                    </View>
+                </View>
+            </TVModal>
+
+            {/* Remove History Confirmation Modal */}
+            <TVModal visible={idToRemove !== null} onClose={() => setIdToRemove(null)}>
+                <View style={s.modalContainer}>
+                    <Trash2 size={scale(64)} color={Colors.error} style={{ marginBottom: scale(24) }} />
+                    <Text style={s.modalTitle}>¿Quitar del Historial?</Text>
+                    <Text style={s.modalSubtitle}>¿Eliminar este título de tu historial de visualización?</Text>
+                    <View style={s.modalActions}>
+                        <ModalButton
+                            title="CANCELAR"
+                            hasTVPreferredFocus
+                            onPress={() => setIdToRemove(null)}
+                        />
+                        <ModalButton
+                            title="SÍ, ELIMINAR"
+                            isDestructive
+                            onPress={() => {
+                                if (idToRemove) { confirmRemoveHistory(idToRemove); setIdToRemove(null); }
+                            }}
                         />
                     </View>
                 </View>
@@ -671,6 +724,30 @@ const s = StyleSheet.create({
         height: '100%',
         backgroundColor: '#38BDF8',
         borderRadius: scale(2),
+    },
+    removeBtn: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'center',
+        gap: scale(5),
+        marginTop: scale(6),
+        backgroundColor: 'rgba(239, 68, 68, 0.08)',
+        borderWidth: 1,
+        borderColor: 'rgba(239, 68, 68, 0.2)',
+        paddingVertical: scale(5),
+        borderRadius: scale(8),
+    },
+    removeBtnFocused: {
+        backgroundColor: '#EF4444',
+        borderColor: '#EF4444',
+    },
+    removeBtnText: {
+        fontSize: scale(11),
+        fontWeight: '700',
+        color: '#EF4444',
+    },
+    removeBtnTextFocused: {
+        color: '#FFFFFF',
     },
 
     // Modal Confirmation
