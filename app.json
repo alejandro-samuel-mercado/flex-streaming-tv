@@ -30,9 +30,6 @@
           ]
         }
       ],
-      "tvBanner": "./assets/images/banner-tv.png",
-      "isTV": true,
-      "usesCleartextTraffic": true,
       "versionCode": 1,
       "permissions": []
     },
@@ -45,7 +42,15 @@
           "initialOrientation": "LANDSCAPE"
         }
       ],
-      "react-native-video"
+      "react-native-video",
+      [
+        "expo-build-properties",
+        {
+          "android": {
+            "usesCleartextTraffic": true
+          }
+        }
+      ]
     ],
     "experiments": {
       "typedRoutes": true

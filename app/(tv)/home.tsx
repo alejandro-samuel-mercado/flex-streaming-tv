@@ -1,5 +1,5 @@
-import React, { useEffect, useState, useCallback, useRef } from 'react';
-import { View, ScrollView, StyleSheet, Text } from 'react-native';
+import React, { useEffect, useState, useCallback, useRef, useMemo } from 'react';
+import { View, ScrollView, StyleSheet, Text, FlatList } from 'react-native';
 import TVFocusable from '../../components/tv/TVFocusable';
 import { Colors } from '../../theme/colors';
 import TVHeroBanner from '../../components/tv/TVHeroBanner';
@@ -14,8 +14,7 @@ import { scale } from '../../lib/scale';
 import { useDoubleBackExit } from '../../hooks/useDoubleBackExit';
 import { cachedFetch } from '../../lib/cache';
 
-const TVFocusGuide = (require('react-native') as any).TVFocusGuideView ?? View;
-
+// Removed TVFocusGuide as it is unused and causes performance issues on Android TV
 const SECTION_LABELS: Record<string, string> = {
     '':       'Inicio',
     'MOVIE':  'Películas',
@@ -93,32 +92,22 @@ export default function HomeScreen() {
 
 
 
-    // Only show skeleton on first load when there's no data yet
-    if (loading && !data) {
-        return (
-            <View style={s.container}>
-                <TVHomeSkeleton />
-            </View>
-        );
-    }
+    const mapToCards = useCallback((items: any[]) => (Array.isArray(items) ? items : [])
+        .filter((item: any) => !!item)
+        .map((item: any) => ({
+            id: item.content?.id || item.id,
+            title: item.content?.translations?.[0]?.title || item.translations?.[0]?.title || '',
+            posterUrl: item.content?.thumbnails?.find((t: any) => t.type === 'POSTER')?.url || item.thumbnails?.find((t: any) => t.type === 'POSTER')?.url,
+            backdropUrl: item.content?.thumbnails?.find((t: any) => t.type === 'BACKDROP')?.url || item.thumbnails?.find((t: any) => t.type === 'BACKDROP')?.url,
+            rating: item.content?.rating || item.rating,
+            year: item.content?.releaseYear || item.releaseYear,
+            type: item.content?.type || item.type,
+            progress: item.progressSeconds ?? item.progress,
+            duration: item.durationSeconds ?? item.duration,
+            episodeId: item.episodeId,
+        })) || [], []);
 
-    if (error) {
-        return (
-            <View style={s.errorContainer}>
-                <Text style={s.errorTitle}>No se pudo conectar con el servidor</Text>
-                <Text style={s.errorText}>{error}</Text>
-                <View style={{ marginTop: 24 }}>
-                    <TVFocusable style={s.retryBtn} hasTVPreferredFocus onPress={() => loadHome(true)}>
-                        <Text style={s.retryText}>REINTENTAR</Text>
-                    </TVFocusable>
-                </View>
-            </View>
-        );
-    }
-
-    if (!data) return null;
-
-    const heroSlides = (data.featured || [])
+    const heroSlides = useMemo(() => (data?.featured || [])
         .filter((f: any) => !!f)
         .map((f: any) => {
             const item = f.content || f;
@@ -150,40 +139,55 @@ export default function HomeScreen() {
                     isUpcoming,
                 };
         })
-        .filter((s: any) => s && !!s.backdropUrl);
+        .filter((s: any) => s && !!s.backdropUrl), [data?.featured]);
 
-    const mapToCards = (items: any[]) => (Array.isArray(items) ? items : [])
-        .filter((item: any) => !!item)
-        .map((item: any) => ({
-            id: item.content?.id || item.id,
-            title: item.content?.translations?.[0]?.title || item.translations?.[0]?.title || '',
-            posterUrl: item.content?.thumbnails?.find((t: any) => t.type === 'POSTER')?.url || item.thumbnails?.find((t: any) => t.type === 'POSTER')?.url,
-            backdropUrl: item.content?.thumbnails?.find((t: any) => t.type === 'BACKDROP')?.url || item.thumbnails?.find((t: any) => t.type === 'BACKDROP')?.url,
-            rating: item.content?.rating || item.rating,
-            year: item.content?.releaseYear || item.releaseYear,
-            type: item.content?.type || item.type,
-            progress: item.progressSeconds ?? item.progress,
-            duration: item.durationSeconds ?? item.duration,
-            episodeId: item.episodeId,
-        })) || [];
+    // Pre-compute card arrays so they don't recreate on every render
+    const cwCards = useMemo(() => mapToCards(continueWatching), [continueWatching, mapToCards]);
+    const trendingCards = useMemo(() => mapToCards(data?.trending || []), [data?.trending, mapToCards]);
+    const estrenosCards = useMemo(() => mapToCards(data?.estrenos || []), [data?.estrenos, mapToCards]);
+    const recentCards = useMemo(() => mapToCards(data?.recent || []), [data?.recent, mapToCards]);
+    const topSeriesCards = useMemo(() => mapToCards(data?.topSeries || []), [data?.topSeries, mapToCards]);
+    const topMoviesCards = useMemo(() => mapToCards(data?.topMovies || []), [data?.topMovies, mapToCards]);
+
+    // Only show skeleton on first load when there's no data yet
+    if (loading && !data) {
+        return (
+            <View style={s.container}>
+                <TVHomeSkeleton />
+            </View>
+        );
+    }
+
+    if (error) {
+        return (
+            <View style={s.errorContainer}>
+                <Text style={s.errorTitle}>No se pudo conectar con el servidor</Text>
+                <Text style={s.errorText}>{error}</Text>
+                <View style={{ marginTop: 24 }}>
+                    <TVFocusable style={s.retryBtn} hasTVPreferredFocus onPress={() => loadHome(true)}>
+                        <Text style={s.retryText}>REINTENTAR</Text>
+                    </TVFocusable>
+                </View>
+            </View>
+        );
+    }
+
+    if (!data) return null;
 
     return (
-        <TVFocusGuide destinations={[]} style={s.container}>
-            <ScrollView
-                showsVerticalScrollIndicator={false}
-                contentContainerStyle={{ paddingBottom: scale(100) }}
-            >
+        <View style={s.container}>
+            <ScrollView showsVerticalScrollIndicator={false}>
                 <TVHeroBanner slides={heroSlides} sectionLabel="Inicio" />
 
                 <View style={s.rowsContainer}>
-                    {data.platforms?.length > 0 && (
+                    {data?.platforms?.length > 0 && (
                         <TVPlatformRow title="Plataformas" items={data.platforms} />
                     )}
 
-                    {user && continueWatching.length > 0 && (
+                    {user && cwCards.length > 0 && (
                         <TVFilmRow
                             title="Continuar Viendo"
-                            items={mapToCards(continueWatching)}
+                            items={cwCards}
                             variant="landscape"
                             onPressItem={(item) => {
                                 if (item.episodeId) {
@@ -195,28 +199,28 @@ export default function HomeScreen() {
                         />
                     )}
 
-                    {data.trending?.length > 0 && (
-                        <TVFilmRow title="Tendencias" items={mapToCards(data.trending)} exploreRoute="/(tv)/explore" variant="landscape" />
+                    {trendingCards.length > 0 && (
+                        <TVFilmRow title="Tendencias" items={trendingCards} exploreRoute="/(tv)/explore" variant="landscape" />
                     )}
 
-                    {data.estrenos?.length > 0 && (
-                        <TVFilmRow title="Estrenos" items={mapToCards(data.estrenos)} exploreRoute="/(tv)/explore?sort=recent" variant="landscape" />
+                    {estrenosCards.length > 0 && (
+                        <TVFilmRow title="Estrenos" items={estrenosCards} exploreRoute="/(tv)/explore?sort=recent" variant="landscape" />
                     )}
 
-                    {data.recent?.length > 0 && (
-                        <TVFilmRow title="Últimos Agregados" items={mapToCards(data.recent)} exploreRoute="/(tv)/explore?sort=recent" variant="landscape" />
+                    {recentCards.length > 0 && (
+                        <TVFilmRow title="Últimos Agregados" items={recentCards} exploreRoute="/(tv)/explore?sort=recent" variant="landscape" />
                     )}
 
-                    {data.topSeries?.length > 0 && (
-                        <TVFilmRow title="Vistazo de Series" items={mapToCards(data.topSeries)} exploreRoute="/(tv)/explore?type=SERIES" variant="landscape" />
+                    {topSeriesCards.length > 0 && (
+                        <TVFilmRow title="Vistazo de Series" items={topSeriesCards} exploreRoute="/(tv)/explore?type=SERIES" variant="landscape" />
                     )}
 
-                    {data.topMovies?.length > 0 && (
-                        <TVFilmRow title="Vistazo de Películas" items={mapToCards(data.topMovies)} exploreRoute="/(tv)/explore?type=MOVIE" variant="landscape" />
+                    {topMoviesCards.length > 0 && (
+                        <TVFilmRow title="Vistazo de Películas" items={topMoviesCards} exploreRoute="/(tv)/explore?type=MOVIE" variant="landscape" />
                     )}
                 </View>
             </ScrollView>
-        </TVFocusGuide>
+        </View>
     );
 }
 

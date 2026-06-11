@@ -1,11 +1,14 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
     View, Text, StyleSheet, FlatList, ActivityIndicator,
-    Pressable, Dimensions,
+    Pressable, Dimensions, findNodeHandle
 } from 'react-native';
+const TVFocusGuideView = (require('react-native') as any).TVFocusGuideView ?? View;
+const TVPressable = Pressable as any;
 import { Heart, X, Trash2 } from 'lucide-react-native';
 import { useRouter } from 'expo-router';
-import Animated from 'react-native-reanimated';
+import Animated, { FadeInUp, FadeOutDown } from 'react-native-reanimated';
+import { BlurView } from 'expo-blur';
 import { Image } from 'expo-image';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Colors } from '../../theme/colors';
@@ -41,6 +44,20 @@ function ModalButton({ onPress, title, isDestructive = false, hasTVPreferredFocu
         </Pressable>
     );
 }
+function CloseFavBtn({ onPress }: { onPress: () => void }) {
+    const [focused, setFocused] = useState(false);
+    return (
+        <Pressable
+            focusable
+            onFocus={() => setFocused(true)}
+            onBlur={() => setFocused(false)}
+            onPress={onPress}
+            style={[s.closeBtn, focused && s.closeBtnFocused]}
+        >
+            <X size={scale(24)} color="#FFF" />
+        </Pressable>
+    );
+}
 const COLS = 6;
 const GAP = scale(16);
 const SIDE = scale(40);
@@ -49,11 +66,12 @@ const CARD_H = CARD_W * 1.5;
 
 // ─── Single card with hover overlay ──────────────────────────────────────────
 function FavCard({
-    item, index, onPlay, onRemove,
+    item, index, onPlay, onRemove, firstItemRef,
 }: {
     item: any; index: number;
     onPlay: () => void;
     onRemove: () => void;
+    firstItemRef?: (node: any) => void;
 }) {
     const [playFocused, setPlayFocused] = useState(false);
     const [removeFocused, setRemoveFocused] = useState(false);
@@ -64,6 +82,7 @@ function FavCard({
     return (
         <View style={{ width: CARD_W, gap: scale(8) }}>
             <Pressable
+                ref={firstItemRef}
                 focusable
                 hasTVPreferredFocus={index === 0}
                 onFocus={() => setPlayFocused(true)}
@@ -146,6 +165,16 @@ export default function FavoritesScreen() {
         router.push(`/(tv)/film/${contentId}` as any);
     }, [router]);
 
+    const firstItemRef = useRef<any>(null);
+    const [firstItemNode, setFirstItemNode] = useState<number | null>(null);
+
+    const captureFirstItem = useCallback((node: any) => {
+        firstItemRef.current = node;
+        if (node) {
+            setFirstItemNode(findNodeHandle(node));
+        }
+    }, []);
+
     if (!user) {
         return (
             <View style={s.root}>
@@ -158,15 +187,34 @@ export default function FavoritesScreen() {
         );
     }
 
+    // Focus shield: 4 invisible focusable strips at screen borders.
+    // If focus escapes the modal, these shields catch it and bounce it back
+    // to the first item in the modal (Android TV doesn't support TVFocusGuideView trapping).
+    const shieldStyle = { position: 'absolute' as const, backgroundColor: 'transparent' };
+
     return (
         <View style={s.root}>
-            {/* Replaced blurry backdrop with opaque dark tint for performance */}
-            <View style={[StyleSheet.absoluteFill, { backgroundColor: 'rgba(5, 8, 15, 0.85)' }]} />
+            {/* Top shield */}
+            {(TVPressable as any) && [
+                <TVPressable key="t" focusable style={[shieldStyle, { top: 0, left: 0, right: 0, height: 1 }]}
+                    nextFocusDown={firstItemNode} nextFocusUp={firstItemNode}
+                    nextFocusLeft={firstItemNode} nextFocusRight={firstItemNode} />,
+                <TVPressable key="b" focusable style={[shieldStyle, { bottom: 0, left: 0, right: 0, height: 1 }]}
+                    nextFocusDown={firstItemNode} nextFocusUp={firstItemNode}
+                    nextFocusLeft={firstItemNode} nextFocusRight={firstItemNode} />,
+                <TVPressable key="l" focusable style={[shieldStyle, { top: 0, bottom: 0, left: 0, width: 1 }]}
+                    nextFocusDown={firstItemNode} nextFocusUp={firstItemNode}
+                    nextFocusLeft={firstItemNode} nextFocusRight={firstItemNode} />,
+                <TVPressable key="r" focusable style={[shieldStyle, { top: 0, bottom: 0, right: 0, width: 1 }]}
+                    nextFocusDown={firstItemNode} nextFocusUp={firstItemNode}
+                    nextFocusLeft={firstItemNode} nextFocusRight={firstItemNode} />,
+            ]}
+
+            <BlurView intensity={30} style={StyleSheet.absoluteFill} />
             <View style={s.bg} />
 
-            <Animated.View style={s.modal}>
-                {/* Replaced frosted glass with static tint */}
-                <View style={[StyleSheet.absoluteFill, { backgroundColor: 'rgba(10, 10, 15, 0.95)' }]} />
+            <Animated.View entering={FadeInUp.springify()} exiting={FadeOutDown.springify()} style={s.modal}>
+                <BlurView intensity={60} style={StyleSheet.absoluteFill} />
 
                 {/* Header */}
                 <View style={s.header}>
@@ -178,7 +226,7 @@ export default function FavoritesScreen() {
                         </View>
                     )}
                     <View style={{ flex: 1 }} />
-
+                    <CloseFavBtn onPress={() => router.back()} />
                 </View>
 
                 {/* Content */}
@@ -206,6 +254,7 @@ export default function FavoritesScreen() {
                                 <FavCard
                                     item={item}
                                     index={index}
+                                    firstItemRef={index === 0 ? captureFirstItem : undefined}
                                     onPlay={() => handlePlay(c.id)}
                                     onRemove={() => setIdToRemove(c.id)}
                                 />
@@ -218,6 +267,7 @@ export default function FavoritesScreen() {
             {/* TV Confirmation Modal */}
             <TVModal visible={idToRemove !== null} onClose={() => setIdToRemove(null)}>
                 <View style={s.modalContainer}>
+                    <BlurView intensity={100} style={StyleSheet.absoluteFill} />
                     <Trash2 size={scale(64)} color={Colors.error} style={{ marginBottom: scale(24) }} />
                     <Text style={s.modalTitle}>¿Quitar de Favoritos?</Text>
                     <Text style={s.modalSubtitle}>¿Estás seguro de que deseas eliminar este título de tus favoritos?</Text>
@@ -246,13 +296,13 @@ export default function FavoritesScreen() {
 }
 
 const s = StyleSheet.create({
-    root: { flex: 1, backgroundColor: 'rgba(0, 0, 0, 0.07)', justifyContent: 'flex-end', alignItems: 'center' },
-    bg: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(3, 6, 18, 0.1)' },
+    root: { flex: 1, backgroundColor: 'rgba(0, 0, 0, 0.2)', justifyContent: 'flex-end', alignItems: 'center' },
+    bg: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(3, 6, 18, 0.4)' },
     modal: {
         width: SW * 0.92,
         height: SH - scale(140),
         marginBottom: scale(30),
-        backgroundColor: 'rgba(255, 255, 255, 0.45)', // Semi-transparent dark base for BlurView
+        backgroundColor: 'rgba(255, 255, 255, 0.1)',
         borderRadius: scale(24),
         borderWidth: 1.5,
         borderColor: 'rgba(255, 255, 255, 0.15)',
@@ -281,13 +331,13 @@ const s = StyleSheet.create({
         width: scale(44),
         height: scale(44),
         borderRadius: scale(22),
-        backgroundColor: 'rgba(0,0,0,0.05)',
+        backgroundColor: 'rgba(255,255,255,0.05)',
         borderWidth: 1,
-        borderColor: 'rgba(0,0,0,0.1)',
+        borderColor: 'rgba(255,255,255,0.1)',
         justifyContent: 'center',
         alignItems: 'center',
     },
-    closeBtnFocused: { backgroundColor: 'rgba(0,0,0,0.15)', borderColor: '#0F172A' },
+    closeBtnFocused: { backgroundColor: 'rgba(255,255,255,0.2)', borderColor: '#FFF' },
     grid: {
         paddingHorizontal: SIDE,
         paddingVertical: scale(30),
@@ -339,7 +389,6 @@ const s = StyleSheet.create({
 
     // Modal Confirmation (Translucent frosted glass)
     modalContainer: {
-        backgroundColor: 'rgba(5, 8, 15, 0.95)', // Highly opaque dark base to replace BlurView
         padding: scale(36),
         borderRadius: scale(24),
         alignItems: 'center',
@@ -370,15 +419,12 @@ const s = StyleSheet.create({
         paddingHorizontal: scale(24),
         paddingVertical: scale(10),
         borderRadius: scale(10),
-        borderWidth: 3,
-        borderColor: 'transparent',
+        borderWidth: 1,
+        borderColor: 'rgba(255,255,255,0.1)',
     },
     modalBtnFocused: {
         backgroundColor: '#FFFFFF',
         borderColor: '#FFFFFF',
-        borderWidth: 3,
-        transform: [{ scale: 1.08 }],
-        elevation: 10,
     },
     modalBtnText: {
         fontSize: scale(14),
@@ -389,19 +435,16 @@ const s = StyleSheet.create({
         color: '#000000',
     },
     modalBtnDestructive: {
-        backgroundColor: 'rgba(239,68,68,0.08)',
+        backgroundColor: 'rgba(239,68,68,0.1)',
         paddingHorizontal: scale(24),
         paddingVertical: scale(10),
         borderRadius: scale(10),
-        borderWidth: 3,
-        borderColor: 'transparent',
+        borderWidth: 1,
+        borderColor: 'rgba(239,68,68,0.3)',
     },
     modalBtnDestructiveFocused: {
         backgroundColor: '#EF4444',
-        borderColor: '#FFFFFF',
-        borderWidth: 3,
-        transform: [{ scale: 1.08 }],
-        elevation: 10,
+        borderColor: '#EF4444',
     },
     modalBtnDestructiveText: {
         fontSize: scale(14),

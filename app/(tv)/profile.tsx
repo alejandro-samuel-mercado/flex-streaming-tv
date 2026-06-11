@@ -87,8 +87,8 @@ function HistoryItem({
         || c.thumbnails?.find((t: any) => t.type === 'BANNER')?.url
         || c.thumbnails?.[0]?.url;
     const title = c.translations?.[0]?.title || '';
-    const progress = item.progressSeconds || 0;
-    const duration = item.durationSeconds || 0;
+    const progress = item.progressSeconds ?? item.progress ?? 0;
+    const duration = item.durationSeconds ?? item.duration ?? 0;
     const progressPct = duration > 0 ? Math.min((progress / duration) * 100, 100) : 0;
 
     return (

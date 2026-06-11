@@ -1,5 +1,7 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
-import { View, Text, StyleSheet, Pressable, BackHandler, ActivityIndicator, Platform, FlatList, ScrollView, findNodeHandle } from 'react-native';
+import { View, Text, StyleSheet, Pressable, BackHandler, ActivityIndicator, Platform, FlatList, ScrollView, findNodeHandle, UIManager } from 'react-native';
+
+const { TVEventHandler } = require('react-native');
 import Video, { VideoRef, SelectedTrackType, TextTrackType } from 'react-native-video';
 import { LinearGradient } from 'expo-linear-gradient';
 import Animated, { useSharedValue, useAnimatedStyle, withTiming, runOnJS } from 'react-native-reanimated';
@@ -113,15 +115,28 @@ function TVMenuButton({ onPress, onFocus, icon: Icon, label, hasTVPreferredFocus
     );
 }
 
-const TVSidebarItem = React.forwardRef<any, any>(function TVSidebarItem({ onPress, style, children }, ref) {
+const TVSidebarItem = React.forwardRef<any, any>(function TVSidebarItem({ onPress, style, children, hasTVPreferredFocus }, ref) {
     const [focused, setFocused] = useState(false);
+    const localRef = useRef<any>(null);
+    const [selfId, setSelfId] = useState<number | null>(null);
+
+    React.useImperativeHandle(ref, () => localRef.current);
+
+    useEffect(() => {
+        if (localRef.current) {
+            setSelfId(findNodeHandle(localRef.current));
+        }
+    }, []);
+
     return (
         <TVPressable
-            ref={ref}
+            ref={localRef}
             focusable
+            hasTVPreferredFocus={hasTVPreferredFocus}
             onFocus={() => setFocused(true)}
             onBlur={() => setFocused(false)}
             onPress={onPress}
+            nextFocusLeft={selfId ?? undefined}
             style={[style, focused && s.itemFocusedWrapper]}
         >
             {typeof children === 'function' ? children(focused) : children}
@@ -130,31 +145,32 @@ const TVSidebarItem = React.forwardRef<any, any>(function TVSidebarItem({ onPres
 });
 
 // ─── Focusable Progress Bar ────────────────────────────────────────────────────
-// Left/Right D-Pad to seek 10s increments. Press select to seek to touched position.
-const SEEK_STEP_MS = 60_000; // 1 minute per D-Pad press/hold on progress bar
+const SEEK_STEP_MS = 60_000; // 1 minute per D-Pad press
 
 function ProgressBar({
-    positionMs,
-    durationMs,
-    onSeek,
-    onStartSeeking,
-    onStopSeeking,
-    formatTime,
+    positionMs, durationMs, onSeek, onFocusGained, onFocusLost, formatTime,
 }: {
-    positionMs: number;
-    durationMs: number;
+    positionMs: number; durationMs: number;
     onSeek: (newMs: number) => void;
-    onStartSeeking: () => void;
-    onStopSeeking: () => void;
+    onFocusGained: () => void;
+    onFocusLost: () => void;
     formatTime: (ms: number) => string;
 }) {
     const [focused, setFocused] = useState(false);
-    const progressBarRef = useRef<any>(null);
-    const seekIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
+    const mainRef = useRef<any>(null);
+    const r1Ref = useRef<any>(null);
+    const r2Ref = useRef<any>(null);
+    const l1Ref = useRef<any>(null);
+    const l2Ref = useRef<any>(null);
+
+    const [nodes, setNodes] = useState<any>({});
     const positionMsRef = useRef(positionMs);
     const durationMsRef = useRef(durationMs);
     const onSeekRef = useRef(onSeek);
+    const focusTimerRef = useRef<any>(null);
+    const stopTimerRef = useRef<any>(null);
+    const groupFocusedRef = useRef(false);
 
     useEffect(() => {
         positionMsRef.current = positionMs;
@@ -162,51 +178,81 @@ function ProgressBar({
         onSeekRef.current = onSeek;
     }, [positionMs, durationMs, onSeek]);
 
-    const startContinuousSeek = (direction: 'left' | 'right') => {
-        if (seekIntervalRef.current) return; // already seeking
-        onStartSeeking();
-        // Seek immediately on first press
-        const doSeek = () => {
-            if (direction === 'left') {
-                onSeekRef.current(Math.max(0, positionMsRef.current - SEEK_STEP_MS));
-            } else {
-                onSeekRef.current(Math.min(durationMsRef.current, positionMsRef.current + SEEK_STEP_MS));
-            }
-        };
-        doSeek();
-        // Then repeat every 300ms while held
-        seekIntervalRef.current = setInterval(doSeek, 300);
+    const handleLayout = () => {
+        setNodes({
+            main: findNodeHandle(mainRef.current),
+            r1: findNodeHandle(r1Ref.current),
+            r2: findNodeHandle(r2Ref.current),
+            l1: findNodeHandle(l1Ref.current),
+            l2: findNodeHandle(l2Ref.current),
+        });
     };
 
-    const stopContinuousSeek = () => {
-        if (seekIntervalRef.current) {
-            clearInterval(seekIntervalRef.current);
-            seekIntervalRef.current = null;
+    const handleFocus = () => {
+        if (focusTimerRef.current) clearTimeout(focusTimerRef.current);
+        groupFocusedRef.current = true;
+        setFocused(true);
+        onFocusGained();
+    };
+
+    const handleBlur = () => {
+        if (focusTimerRef.current) clearTimeout(focusTimerRef.current);
+        // Debounce blur so visual focus doesn't flicker when bouncing between dummies
+        focusTimerRef.current = setTimeout(() => {
+            groupFocusedRef.current = false;
+            setFocused(false);
+            onFocusLost();
+        }, 150);
+    };
+
+    const doSeek = (direction: 'left' | 'right') => {
+        // Prevent accidental seeking if the user navigates DOWN from the Play button 
+        // and lands on a dummy. Only seek if we were ALREADY inside the progress bar group!
+        if (!groupFocusedRef.current) {
+            handleFocus();
+            return;
         }
-        onStopSeeking();
-        // Restore focus to main progress bar
-        setTimeout(() => progressBarRef.current?.focus?.(), 50);
+
+        if (direction === 'left') {
+            onSeekRef.current(Math.max(0, positionMsRef.current - SEEK_STEP_MS));
+        } else {
+            onSeekRef.current(Math.min(durationMsRef.current, positionMsRef.current + SEEK_STEP_MS));
+        }
+
+        // When seeking, ensure we don't hide the OSD
+        handleFocus();
     };
 
     const pct = durationMs > 0 ? (positionMs / durationMs) * 100 : 0;
 
     return (
-        <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-            {/* Invisible Left Dummy: captures D-Pad Left when progress bar is focused */}
-            {focused && (
-                <Pressable
-                    focusable
-                    onFocus={() => startContinuousSeek('left')}
-                    onBlur={stopContinuousSeek}
-                    style={{ width: 1, height: 1, position: 'absolute', left: -1 }}
-                />
-            )}
-
+        <View style={{ flexDirection: 'row', alignItems: 'center' }} onLayout={handleLayout}>
+            {/* LEFT PING-PONG */}
             <TVPressable
-                ref={progressBarRef}
+                ref={l2Ref}
                 focusable
-                onFocus={() => { setFocused(true); onStartSeeking(); }}
-                onBlur={() => { setFocused(false); onStopSeeking(); }}
+                onFocus={() => doSeek('left')}
+                onBlur={handleBlur}
+                nextFocusLeft={nodes.l1}
+                nextFocusRight={nodes.main}
+                style={{ width: 1, height: 1, backgroundColor: 'transparent', position: 'absolute', left: -20 }}
+            />
+            <TVPressable
+                ref={l1Ref}
+                focusable
+                onFocus={() => doSeek('left')}
+                onBlur={handleBlur}
+                nextFocusLeft={nodes.l2}
+                nextFocusRight={nodes.main}
+                style={{ width: 1, height: 1, backgroundColor: 'transparent', position: 'absolute', left: -10 }}
+            />
+
+            {/* MAIN PROGRESS BAR */}
+            <TVPressable
+                ref={mainRef}
+                focusable
+                onFocus={handleFocus}
+                onBlur={handleBlur}
                 style={[s.progressContainer, focused && s.progressContainerFocused]}
             >
                 <Text style={s.timeText}>{formatTime(positionMs)}</Text>
@@ -217,18 +263,32 @@ function ProgressBar({
                 <Text style={s.timeText}>{formatTime(durationMs)}</Text>
             </TVPressable>
 
-            {/* Invisible Right Dummy: captures D-Pad Right when progress bar is focused */}
-            {focused && (
-                <Pressable
-                    focusable
-                    onFocus={() => startContinuousSeek('right')}
-                    onBlur={stopContinuousSeek}
-                    style={{ width: 1, height: 1, position: 'absolute', right: -1 }}
-                />
-            )}
+            {/* RIGHT PING-PONG */}
+            <TVPressable
+                ref={r1Ref}
+                focusable
+                onFocus={() => doSeek('right')}
+                onBlur={handleBlur}
+                nextFocusRight={nodes.r2}
+                nextFocusLeft={nodes.main}
+                style={{ width: 1, height: 1, backgroundColor: 'transparent', position: 'absolute', right: -10 }}
+            />
+            <TVPressable
+                ref={r2Ref}
+                focusable
+                onFocus={() => doSeek('right')}
+                onBlur={handleBlur}
+                nextFocusRight={nodes.r1}
+                nextFocusLeft={nodes.main}
+                style={{ width: 1, height: 1, backgroundColor: 'transparent', position: 'absolute', right: -20 }}
+            />
         </View>
     );
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Helper to get the native node handle safely
+// ─────────────────────────────────────────────────────────────────────────────
 
 export default function TVPlayer({ content, currentEpisode, streamData, videoUrl, title, subtitle, startPosition = 0 }: TVPlayerProps) {
     const router = useRouter();
@@ -297,19 +357,19 @@ export default function TVPlayer({ content, currentEpisode, streamData, videoUrl
         osdOpacity.value = withTiming(1, { duration: 200 });
 
         if (osdTimer.current) clearTimeout(osdTimer.current);
-        if (!activeMenu) {
+        if (!activeMenuRef.current) {
             osdTimer.current = setTimeout(() => {
                 osdOpacity.value = withTiming(0, { duration: 300 }, (finished) => {
                     if (finished) runOnJS(hideOSD)();
                 });
             }, TV.playerOSDHideMs);
         }
-    }, [activeMenu, hideOSD]);
+    }, [hideOSD]);
 
     useEffect(() => {
         showOSD();
         return () => { if (osdTimer.current) clearTimeout(osdTimer.current); };
-    }, [showOSD]);
+    }, []); // Run only on mount
 
     // Handle Web Video HLS and Playback binding
     useEffect(() => {
@@ -383,12 +443,12 @@ export default function TVPlayer({ content, currentEpisode, streamData, videoUrl
         const onTimeUpdate = () => {
             const pos = video.currentTime * 1000;
             const dur = video.duration * 1000;
-            
+
             positionMillisRef.current = pos;
             if (dur > 1000) setDurationMillis(dur);
-            
+
             if (loading && pos > 0) setLoading(false);
-            
+
             const now = Date.now();
             if (now - lastSaveTime.current > TV.progressSaveIntervalMs) {
                 lastSaveTime.current = now;
@@ -481,7 +541,7 @@ export default function TVPlayer({ content, currentEpisode, streamData, videoUrl
         if (!isPlayingRef.current) {
             isPlayingRef.current = true;
             setIsPlaying(true);
-            if (Platform.OS === 'web') webVideoRef.current?.play().catch(() => {});
+            if (Platform.OS === 'web') webVideoRef.current?.play().catch(() => { });
         }
     }, [seekToPosition, showOSD]);
 
@@ -585,15 +645,15 @@ export default function TVPlayer({ content, currentEpisode, streamData, videoUrl
     };
 
     const saveProgress = async (pos: number, dur: number) => {
-        if (pos === 0 || dur === 0 || !contentId) return;
+        if (pos === 0 || !contentId) return;
         try {
             await fetchApi(API_ROUTES.HISTORY.PROGRESS, {
                 method: 'POST',
                 body: JSON.stringify({
                     contentId,
                     episodeId,
-                    progressSeconds: Math.floor(pos / 1000),
-                    durationSeconds: Math.floor(dur / 1000),
+                    progress: Math.floor(pos / 1000),
+                    duration: dur > 0 ? Math.floor(dur / 1000) : undefined,
                 }),
             });
         } catch { }
@@ -623,7 +683,7 @@ export default function TVPlayer({ content, currentEpisode, streamData, videoUrl
             type: t.type,
             index: t.index !== undefined ? t.index : idx
         }));
-        
+
         const combined = dbSubs.map((s: any) => ({
             ...s,
             label: getLangLabel(s.language, s.label, s.name, s.label),
@@ -656,7 +716,7 @@ export default function TVPlayer({ content, currentEpisode, streamData, videoUrl
             index: t.index !== undefined ? t.index : idx,
             isDefault: t.selected
         }));
-        
+
         const combined = dbAudio.map((a: any) => ({
             ...a,
             label: getLangLabel(a.language, a.label, a.name, a.label),
@@ -839,13 +899,13 @@ export default function TVPlayer({ content, currentEpisode, streamData, videoUrl
                                         {(f: boolean) => <SkipBack size={scale(24)} color={f ? Colors.black : Colors.white} fill={f ? Colors.black : Colors.white} />}
                                     </TVPlaybackButton>
                                 )}
-                                
+
                                 {/* Restart Button - Placed exactly before the rewind 20s button */}
                                 <TVPlaybackButton onPress={restart} onFocus={showOSD} style={{ marginRight: scale(16) }}>
                                     {(f: boolean) => (
                                         <View style={{ alignItems: 'center' }}>
                                             <RefreshCw size={scale(24)} color={f ? Colors.black : Colors.white} />
-                                            <Text style={[s.skipText, f && s.skipTextFocused]}>Inicio</Text>
+                                            <Text style={[s.skipText, f && s.skipTextFocused]}>Reiniciar</Text>
                                         </View>
                                     )}
                                 </TVPlaybackButton>
@@ -886,19 +946,14 @@ export default function TVPlayer({ content, currentEpisode, streamData, videoUrl
                         <ProgressBar
                             positionMs={position}
                             durationMs={duration}
-                            onSeek={(newMs) => { seekToPosition(newMs); }}
-                            onStartSeeking={() => {
-                                // Pause OSD auto-hide timer during scrubbing so menu stays visible
-                                if (osdTimer.current) {
-                                    clearTimeout(osdTimer.current);
-                                    osdTimer.current = null;
-                                }
-                                if (!osdVisibleRef.current) {
-                                    showOSD();
-                                }
+                            onSeek={(newMs) => seekToPosition(newMs)}
+                            onFocusGained={() => {
+                                // Stop OSD hide timer — keep menu visible while user scrubs
+                                if (osdTimer.current) { clearTimeout(osdTimer.current); osdTimer.current = null; }
+                                if (!osdVisibleRef.current) showOSD();
                             }}
-                            onStopSeeking={() => {
-                                // Restart auto-hide timer after seeking is done
+                            onFocusLost={() => {
+                                // Only start hide timer when user truly leaves the progress bar
                                 if (osdTimer.current) clearTimeout(osdTimer.current);
                                 osdTimer.current = setTimeout(() => {
                                     osdOpacity.value = withTiming(0, { duration: 300 }, (finished) => {
@@ -932,7 +987,8 @@ export default function TVPlayer({ content, currentEpisode, streamData, videoUrl
                                     contentContainerStyle={{ padding: scale(24), gap: scale(16) }}
                                     renderItem={({ item: ep, index: epIdx }) => (
                                         <TVSidebarItem
-                                            ref={epIdx === 0 ? firstSidebarItemRef : undefined}
+                                            ref={episodeId === ep.id ? firstSidebarItemRef : undefined}
+                                            hasTVPreferredFocus={episodeId === ep.id}
                                             onPress={() => { setActiveMenu(null); router.replace(`/(tv)/watch/${contentId}?episodeId=${ep.id}` as any); }}
                                             style={[s.epItem, episodeId === ep.id && s.epItemActive]}
                                         >
@@ -957,7 +1013,8 @@ export default function TVPlayer({ content, currentEpisode, streamData, videoUrl
                             {activeMenu === 'subs' && (
                                 <ScrollView contentContainerStyle={{ padding: scale(24), gap: scale(16) }}>
                                     <TVSidebarItem
-                                        ref={firstSidebarItemRef}
+                                        ref={selectedSub === 'off' ? firstSidebarItemRef : undefined}
+                                        hasTVPreferredFocus={selectedSub === 'off'}
                                         onPress={() => { setSelectedSub('off'); setActiveMenu(null); showOSD(); }}
                                         style={s.trackItem}
                                     >
@@ -983,7 +1040,13 @@ export default function TVPlayer({ content, currentEpisode, streamData, videoUrl
 
                                         const isSelected = selectedSub === value;
                                         return (
-                                            <TVSidebarItem key={i} onPress={() => { setSelectedSub(value); setActiveMenu(null); showOSD(); }} style={s.trackItem}>
+                                            <TVSidebarItem 
+                                                key={i} 
+                                                hasTVPreferredFocus={isSelected}
+                                                ref={isSelected ? firstSidebarItemRef : undefined}
+                                                onPress={() => { setSelectedSub(value); setActiveMenu(null); showOSD(); }} 
+                                                style={s.trackItem}
+                                            >
                                                 {(focused: boolean) => (
                                                     <>
                                                         <Text style={[s.trackText, focused && s.trackTextFocused]}>{sub.label || sub.language || `Pista ${i + 1}`}</Text>
@@ -1005,7 +1068,8 @@ export default function TVPlayer({ content, currentEpisode, streamData, videoUrl
                                         return (
                                             <TVSidebarItem
                                                 key={i}
-                                                ref={i === 0 ? firstSidebarItemRef : undefined}
+                                                ref={isSelected ? firstSidebarItemRef : undefined}
+                                                hasTVPreferredFocus={isSelected}
                                                 onPress={() => { setSelectedAudio(value); setActiveMenu(null); showOSD(); }}
                                                 style={s.trackItem}
                                             >

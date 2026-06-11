@@ -7,3 +7,11 @@ expo-env.d.ts
 .expo
 /node_modules
 # @end expo-cli
+
+/android
+/ios
+*.jks
+*.p8
+*.p12
+*.key
+*.mobileprovision

@@ -1,5 +1,5 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { View, Text, StyleSheet, Dimensions, Pressable, Animated, Easing } from 'react-native';
+import React, { useState, useEffect, useRef, useCallback, memo } from 'react';
+import { View, Text, StyleSheet, Dimensions, Pressable } from 'react-native';
 import { Image } from 'expo-image';
 import { Play, Plus, Star, Clock } from 'lucide-react-native';
 import { Colors } from '../../theme/colors';
@@ -34,28 +34,21 @@ interface TVHeroBannerProps {
 // ─── Play Button ──────────────────────────────────────────────────────────────
 function PlayButton({ item, onPress }: { item: Slide; onPress: () => void }) {
     const [focused, setFocused] = useState(false);
-    const scaleAnim = useRef(new Animated.Value(1)).current;
     const isUpcoming = !!item.isUpcoming;
 
     return (
         <Pressable
             focusable
             hasTVPreferredFocus
-            onFocus={() => {
-                setFocused(true);
-                Animated.timing(scaleAnim, { toValue: 1.07, duration: 150, useNativeDriver: true, easing: Easing.out(Easing.ease) }).start();
-            }}
-            onBlur={() => {
-                setFocused(false);
-                Animated.timing(scaleAnim, { toValue: 1, duration: 150, useNativeDriver: true, easing: Easing.out(Easing.ease) }).start();
-            }}
+            onFocus={() => setFocused(true)}
+            onBlur={() => setFocused(false)}
             onPress={isUpcoming ? undefined : onPress}
             style={[
                 s.playBtn, 
                 focused && s.playBtnFocused
             ]}
         >
-            <Animated.View style={[{ transform: [{ scale: scaleAnim }], flexDirection: 'row', alignItems: 'center', gap: scale(10) }]}>
+            <View style={[{ flexDirection: 'row', alignItems: 'center', gap: scale(10) }, focused && { transform: [{ scale: 1.05 }] }]}>
                 {isUpcoming ? (
                     <Clock size={scale(18)} color={focused ? Colors.white : Colors.black} />
                 ) : (
@@ -64,7 +57,7 @@ function PlayButton({ item, onPress }: { item: Slide; onPress: () => void }) {
                 <Text style={[s.playBtnText, focused && s.playBtnTextFocused]}>
                     {isUpcoming ? 'Próximamente' : 'Reproducir'}
                 </Text>
-            </Animated.View>
+            </View>
         </Pressable>
     );
 }
@@ -72,34 +65,27 @@ function PlayButton({ item, onPress }: { item: Slide; onPress: () => void }) {
 // ─── Add Button ───────────────────────────────────────────────────────────────
 function AddButton({ onPress }: { onPress: () => void }) {
     const [focused, setFocused] = useState(false);
-    const scaleAnim = useRef(new Animated.Value(1)).current;
 
     return (
         <Pressable
             focusable
-            onFocus={() => {
-                setFocused(true);
-                Animated.timing(scaleAnim, { toValue: 1.12, duration: 150, useNativeDriver: true, easing: Easing.out(Easing.ease) }).start();
-            }}
-            onBlur={() => {
-                setFocused(false);
-                Animated.timing(scaleAnim, { toValue: 1, duration: 150, useNativeDriver: true, easing: Easing.out(Easing.ease) }).start();
-            }}
+            onFocus={() => setFocused(true)}
+            onBlur={() => setFocused(false)}
             onPress={onPress}
             style={[
                 s.addBtn, 
                 focused && s.addBtnFocused
             ]}
         >
-            <Animated.View style={[{ transform: [{ scale: scaleAnim }], justifyContent: 'center', alignItems: 'center' }]}>
+            <View style={[{ justifyContent: 'center', alignItems: 'center' }, focused && { transform: [{ scale: 1.1 }] }]}>
                 <Plus size={scale(22)} color={focused ? Colors.black : Colors.white} strokeWidth={2.5} />
-            </Animated.View>
+            </View>
         </Pressable>
     );
 }
 
 // ─── Main Component ───────────────────────────────────────────────────────────
-export default function TVHeroBanner({ slides, sectionLabel }: TVHeroBannerProps) {
+function TVHeroBannerInner({ slides, sectionLabel }: TVHeroBannerProps) {
     const router = useRouter();
     const [currentIndex, setCurrentIndex] = useState(0);
     const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -202,6 +188,9 @@ export default function TVHeroBanner({ slides, sectionLabel }: TVHeroBannerProps
         </View>
     );
 }
+
+const TVHeroBanner = memo(TVHeroBannerInner);
+export default TVHeroBanner;
 
 const s = StyleSheet.create({
     container: {

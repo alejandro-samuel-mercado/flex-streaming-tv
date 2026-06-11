@@ -1,20 +1,16 @@
-import React, { useRef, useState, useCallback } from 'react';
+import React, { useMemo, useState, useCallback } from 'react';
 import {
   Pressable,
   StyleSheet,
   ViewStyle,
   PressableProps,
-  Animated,
-  Easing,
 } from 'react-native';
-import { Colors } from '../../theme/colors';
 import { TV } from '../../theme/tv';
 
 interface TVFocusableProps extends Omit<PressableProps, 'style'> {
   style?: ViewStyle | ViewStyle[];
   focusedStyle?: ViewStyle;
   children: React.ReactNode;
-  onFocusChange?: (focused: boolean) => void;
   scaleOnFocus?: number;
   disableScale?: boolean;
   focusBorderRadius?: number;
@@ -22,11 +18,7 @@ interface TVFocusableProps extends Omit<PressableProps, 'style'> {
 }
 
 /**
- * TVFocusable — Universal focusable wrapper for all TV interactive elements.
- * Applies:
- *   - 4px white border when focused
- *   - Scale animation (1.08 default) using highly-performant native Animated API
- *   - 150ms transitions
+ * TVFocusable — Zero-overhead focusable wrapper.
  */
 const TVFocusable = React.forwardRef<any, TVFocusableProps>(
   (
@@ -34,44 +26,30 @@ const TVFocusable = React.forwardRef<any, TVFocusableProps>(
       children,
       style,
       focusedStyle,
-      onPress,
-      onFocusChange,
       scaleOnFocus = TV.cardFocusedScale,
       disableScale = false,
       focusBorderRadius = TV.focusBorderRadius,
       hasTVPreferredFocus,
+      onFocus,
+      onBlur,
       ...rest
     },
     ref
   ) => {
     const [isFocused, setIsFocused] = useState(false);
-    const scaleAnim = useRef(new Animated.Value(1)).current;
 
-    const handleFocus = useCallback(() => {
+    const handleFocus = useCallback((e: any) => {
       setIsFocused(true);
-      if (!disableScale) {
-        Animated.timing(scaleAnim, {
-          toValue: scaleOnFocus,
-          duration: TV.focusAnimDuration,
-          useNativeDriver: true,
-          easing: Easing.out(Easing.ease),
-        }).start();
-      }
-      onFocusChange?.(true);
-    }, [disableScale, scaleOnFocus, onFocusChange, scaleAnim]);
+      onFocus?.(e);
+    }, [onFocus]);
 
-    const handleBlur = useCallback(() => {
+    const handleBlur = useCallback((e: any) => {
       setIsFocused(false);
-      Animated.timing(scaleAnim, {
-        toValue: 1,
-        duration: TV.focusAnimDuration,
-        useNativeDriver: true,
-        easing: Easing.out(Easing.ease),
-      }).start();
-      onFocusChange?.(false);
-    }, [onFocusChange, scaleAnim]);
+      onBlur?.(e);
+    }, [onBlur]);
 
-    const flatStyle = Array.isArray(style) ? StyleSheet.flatten(style) : style;
+    // Memoize the base style to avoid flattening on every render
+    const flatStyle = useMemo(() => Array.isArray(style) ? StyleSheet.flatten(style) : style, [style]);
 
     return (
       <Pressable
@@ -80,22 +58,16 @@ const TVFocusable = React.forwardRef<any, TVFocusableProps>(
         hasTVPreferredFocus={hasTVPreferredFocus}
         onFocus={handleFocus}
         onBlur={handleBlur}
-        onPress={onPress}
         {...rest}
+        style={[
+          flatStyle,
+          isFocused && !disableScale && { transform: [{ scale: scaleOnFocus }] },
+          isFocused && s.focused,
+          isFocused && { borderRadius: focusBorderRadius },
+          isFocused && focusedStyle,
+        ]}
       >
-        <Animated.View
-          style={[
-            flatStyle,
-            { transform: [{ scale: scaleAnim }] },
-            isFocused && [
-              s.focused,
-              { borderRadius: focusBorderRadius },
-              focusedStyle,
-            ],
-          ]}
-        >
-          {children}
-        </Animated.View>
+        {children}
       </Pressable>
     );
   }
@@ -106,8 +78,7 @@ export default TVFocusable;
 
 const s = StyleSheet.create({
   focused: {
-    borderWidth: 4,
-    borderColor: '#FFFFFF',
-    // Removed shadows for optimal Android TV layout performance
+    borderWidth: 3,
+    borderColor: 'rgba(255, 255, 255, 0.75)',
   },
 });

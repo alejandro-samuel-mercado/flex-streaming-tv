@@ -1,5 +1,5 @@
-import React, { useState, useEffect, useRef } from 'react';
-import { View, Text, StyleSheet, Pressable, Animated } from 'react-native';
+import React, { useState, useEffect } from 'react';
+import { View, Text, StyleSheet, Pressable } from 'react-native';
 import { useRouter, usePathname, useGlobalSearchParams } from 'expo-router';
 
 import { Search, User, Heart } from 'lucide-react-native';
@@ -139,17 +139,18 @@ function NavPill({ label, isActive, onPress }: { label: string; isActive: boolea
             style={[
                 s.pill,
                 isActive && s.pillActive,
-                focused && !isActive && s.pillFocused,
-                focused && { transform: [{ scale: 1.08 }] }
+                focused && !isActive && s.pillFocused
             ]}
         >
-            <Text style={[
-                s.pillText,
-                isActive && s.pillTextActive,
-                focused && !isActive && s.pillTextFocused,
-            ]}>
-                {label}
-            </Text>
+            <View style={focused ? { transform: [{ scale: 1.08 }] } : undefined}>
+                <Text style={[
+                    s.pillText,
+                    isActive && s.pillTextActive,
+                    focused && !isActive && s.pillTextFocused,
+                ]}>
+                    {label}
+                </Text>
+            </View>
         </Pressable>
     );
 }
@@ -157,6 +158,7 @@ function NavPill({ label, isActive, onPress }: { label: string; isActive: boolea
 // ─── IconBtn ───────────────────────────────────────────────────────────────────
 function IconBtn({ onPress, children }: any) {
     const [focused, setFocused] = useState(false);
+
     return (
         <Pressable
             focusable
@@ -165,11 +167,12 @@ function IconBtn({ onPress, children }: any) {
             onPress={onPress}
             style={[
                 s.iconBtn,
-                focused && s.iconBtnFocused,
-                focused && { transform: [{ scale: 1.1 }] }
+                focused && s.iconBtnFocused
             ]}
         >
-            {children}
+            <View style={focused ? { transform: [{ scale: 1.1 }] } : undefined}>
+                {children}
+            </View>
         </Pressable>
     );
 }
@@ -178,6 +181,7 @@ function IconBtn({ onPress, children }: any) {
 function UserBtn({ onPress }: any) {
     const { user } = useAuth();
     const [focused, setFocused] = useState(false);
+
     return (
         <Pressable
             focusable
@@ -187,18 +191,19 @@ function UserBtn({ onPress }: any) {
             style={[
                 s.iconBtn,
                 s.avatarBtn,
-                focused && s.avatarBtnFocused,
-                focused && { transform: [{ scale: 1.1 }] }
+                focused && s.avatarBtnFocused
             ]}
         >
-            {user ? (
-                <Image 
-                    source={{ uri: `https://api.dicebear.com/7.x/bottts/png?seed=${user.id || 'default'}&backgroundColor=e5e7eb` }} 
-                    style={{ width: '100%', height: '100%', borderRadius: scale(25) }} 
-                />
-            ) : (
-                <User size={scale(24)} color={focused ? Colors.black : Colors.white} />
-            )}
+            <View style={[{ width: '100%', height: '100%', justifyContent: 'center', alignItems: 'center' }, focused && { transform: [{ scale: 1.1 }] }]}>
+                {user ? (
+                    <Image 
+                        source={{ uri: `https://api.dicebear.com/7.x/bottts/png?seed=${user.id || 'default'}&backgroundColor=e5e7eb` }} 
+                        style={{ width: '100%', height: '100%', borderRadius: scale(25) }} 
+                    />
+                ) : (
+                    <User size={scale(24)} color={focused ? Colors.black : Colors.white} />
+                )}
+            </View>
         </Pressable>
     );
 }

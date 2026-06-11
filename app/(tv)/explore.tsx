@@ -161,6 +161,7 @@ export default function ExploreScreen() {
     const [platformId, setPlatformId] = useState('');
     const [searchQuery, setSearchQuery] = useState('');
     const [appliedSearch, setAppliedSearch] = useState('');
+    const [searchFocused, setSearchFocused] = useState(false);
 
     // Metadata
     const [genres, setGenres] = useState<FilterOption[]>([]);
@@ -308,7 +309,7 @@ export default function ExploreScreen() {
                         try {
                             const detailRes = await fetchApi(`${API_ROUTES.CONTENT.BASE}/${item.id}`);
                             if (detailRes?.success && detailRes.data) return detailRes.data;
-                        } catch (e) {}
+                        } catch (e) { }
                         return item;
                     })
                 );
@@ -472,16 +473,6 @@ export default function ExploreScreen() {
 
                 <View style={{ flex: 1 }} />
 
-                {(sort !== 'recent' || genreId !== '' || platformId !== '' || appliedSearch !== '' || currentType !== '') && (
-                    <Pressable
-                        focusable
-                        onPress={() => { setCurrentType(''); setSort('recent'); setGenreId(''); setPlatformId(''); setAppliedSearch(''); setSearchQuery(''); setForceFilterGrid(false); }}
-                        style={({ focused }: any) => [s.clearBtn, focused && s.clearBtnFocused]}
-                    >
-                        <X size={16} color="#EF4444" />
-                        <Text style={s.clearBtnText}>Restablecer</Text>
-                    </Pressable>
-                )}
             </View>
 
             {/* Search & Tabs */}
@@ -489,17 +480,20 @@ export default function ExploreScreen() {
                 <Pressable
                     focusable
                     onPress={() => searchInputRef.current?.focus()}
-                    style={({ focused }: any) => [
+                    onFocus={() => setSearchFocused(true)}
+                    onBlur={() => setSearchFocused(false)}
+                    style={[
                         s.searchContainer,
-                        focused && { borderColor: Colors.white }
+                        searchFocused && s.searchContainerFocused
                     ]}
                 >
-                    <Search size={22} color={Colors.textSecondary} style={{ marginRight: 14 }} />
+                    <Search size={22} color={searchFocused ? Colors.black : Colors.textSecondary} style={{ marginRight: 14 }} />
                     <TextInput
                         ref={searchInputRef}
+                        focusable={false}
                         placeholder="Buscar películas, series..."
-                        placeholderTextColor={Colors.textMuted}
-                        style={s.searchInput}
+                        placeholderTextColor={searchFocused ? Colors.textSecondary : Colors.textMuted}
+                        style={[s.searchInput, searchFocused && { color: Colors.black }]}
                         value={searchQuery}
                         onChangeText={setSearchQuery}
                         onSubmitEditing={() => setAppliedSearch(searchQuery)}
@@ -674,6 +668,11 @@ const s = StyleSheet.create({
         backgroundColor: 'rgba(255,255,255,0.08)',
         paddingHorizontal: scale(24), paddingVertical: scale(14),
         borderRadius: scale(16), borderWidth: 2, borderColor: 'transparent',
+    },
+    searchContainerFocused: {
+        backgroundColor: Colors.white,
+        borderColor: Colors.white,
+        transform: [{ scale: 1.05 }],
     },
     searchInput: {
         flex: 1, fontSize: scale(18), fontWeight: '600', color: Colors.white,
