@@ -63,8 +63,8 @@ export default function WatchScreen() {
           setStreamData(accessRes.data);
           const filename = masterPlaylist ? masterPlaylist.split('/').pop() : 'master.m3u8';
           // Use the storage node URL if provided, otherwise fall back to the main API
-          const baseUrl = streamBaseUrl || API_BASE_URL;
-          const url = `${baseUrl}/stream/hls/${videoFileId}/${token}/${filename}`;
+          const streamHost = streamBaseUrl || API_BASE_URL.replace('/api', '');
+          const url = `${streamHost}/api/stream/hls/${videoFileId}/${token}/${filename}`;
           setStreamUrl(url);
           
           // Fetch existing watch progress
