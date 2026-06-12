@@ -57,11 +57,7 @@
     },
     "scheme": "nubatv",
     "extra": {
-      "router": {},
-      "eas": {
-        "projectId": "ae75e932-09e6-4ead-be02-6c1bac886919"
-      }
-    },
-    "owner": "lalsja"
+      "router": {}
+    }
   }
 }
