@@ -68,7 +68,6 @@ export default function WatchScreen() {
           const streamHost = safeStreamBase || API_BASE_URL.replace(/\/api\/?$/, '');
           const url = `${streamHost}/api/stream/hls/${videoFileId}/${token}/${filename}`;
           setStreamUrl(url);
-          streamUrlRef.current = url;
           
           // Fetch existing watch progress
           try {
