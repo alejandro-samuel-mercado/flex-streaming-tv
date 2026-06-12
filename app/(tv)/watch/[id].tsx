@@ -66,7 +66,7 @@ export default function WatchScreen() {
           // Safely strip /api from streamBaseUrl to avoid /api/api/stream/hls double prefix
           const safeStreamBase = streamBaseUrl ? streamBaseUrl.replace(/\/api\/?$/, '') : null;
           const streamHost = safeStreamBase || API_BASE_URL.replace(/\/api\/?$/, '');
-          const url = `${streamHost}/api/stream/hls/${videoFileId}/${token}/${filename}`;
+          const url = `${streamHost}/api/stream/hls/${videoFileId}/${filename}?token=${token}`;
           setStreamUrl(url);
           
           // Fetch existing watch progress
