@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
-import { View, Text, StyleSheet, Pressable, BackHandler, ActivityIndicator, Platform, FlatList, ScrollView, findNodeHandle, UIManager } from 'react-native';
+import { View, Text, StyleSheet, Pressable, BackHandler, ActivityIndicator, Platform, FlatList, ScrollView, UIManager } from 'react-native';
 
 const { TVEventHandler } = require('react-native');
 import Video, { VideoRef, SelectedTrackType, TextTrackType } from 'react-native-video';
@@ -68,6 +68,17 @@ const TVFocusGuide = (require('react-native') as any).TVFocusGuideView ?? View;
 const TVEvtHandler: any = (require('react-native') as any).TVEventHandler ?? null;
 const TVPressable = Pressable as any;
 
+// Safe wrapper to prevent web crashes
+const safeFindNodeHandle = (componentOrHandle: any) => {
+    if (Platform.OS === 'web') return null;
+    try {
+        const find = (require('react-native') as any).findNodeHandle;
+        return find ? find(componentOrHandle) : null;
+    } catch {
+        return null;
+    }
+};
+
 interface TVPlayerProps {
     content: any;
     currentEpisode?: any;
@@ -124,7 +135,7 @@ const TVSidebarItem = React.forwardRef<any, any>(function TVSidebarItem({ onPres
 
     useEffect(() => {
         if (localRef.current) {
-            setSelfId(findNodeHandle(localRef.current));
+            setSelfId(safeFindNodeHandle(localRef.current));
         }
     }, []);
 
@@ -180,11 +191,11 @@ function ProgressBar({
 
     const handleLayout = () => {
         setNodes({
-            main: findNodeHandle(mainRef.current),
-            r1: findNodeHandle(r1Ref.current),
-            r2: findNodeHandle(r2Ref.current),
-            l1: findNodeHandle(l1Ref.current),
-            l2: findNodeHandle(l2Ref.current),
+            main: safeFindNodeHandle(mainRef.current),
+            r1: safeFindNodeHandle(r1Ref.current),
+            r2: safeFindNodeHandle(r2Ref.current),
+            l1: safeFindNodeHandle(l1Ref.current),
+            l2: safeFindNodeHandle(l2Ref.current),
         });
     };
 
@@ -294,6 +305,7 @@ export default function TVPlayer({ content, currentEpisode, streamData, videoUrl
     const router = useRouter();
     const videoRef = useRef<VideoRef>(null);
     const webVideoRef = useRef<HTMLVideoElement>(null);
+    const hlsRef = useRef<any>(null);
     // Ref to the transparent overlay Pressable — needed to retain focus when OSD is hidden
     const overlayRef = useRef<any>(null);
 
@@ -323,6 +335,11 @@ export default function TVPlayer({ content, currentEpisode, streamData, videoUrl
     const [detectedAudioTracks, setDetectedAudioTracks] = useState<any[]>([]);
     const [detectedTextTracks, setDetectedTextTracks] = useState<any[]>([]);
     const firstSidebarItemRef = useRef<any>(null);
+
+    const [activeVideoUrl, setActiveVideoUrl] = useState(videoUrl);
+    useEffect(() => {
+        setActiveVideoUrl(videoUrl);
+    }, [videoUrl]);
 
     // Progress tracking
     const lastSaveTime = useRef(0);
@@ -373,19 +390,20 @@ export default function TVPlayer({ content, currentEpisode, streamData, videoUrl
 
     // Handle Web Video HLS and Playback binding
     useEffect(() => {
-        if (Platform.OS !== 'web' || !videoUrl || !webVideoRef.current) return;
+        if (Platform.OS !== 'web' || !activeVideoUrl || !webVideoRef.current) return;
         const video = webVideoRef.current;
         let hlsInstance: any = null;
 
-        let absoluteVideoUrl = videoUrl;
-        if (!videoUrl.startsWith('http')) {
-            const normalized = videoUrl.startsWith('/') ? videoUrl : `/${videoUrl}`;
+        let absoluteVideoUrl = activeVideoUrl;
+        if (!activeVideoUrl.startsWith('http')) {
+            const normalized = activeVideoUrl.startsWith('/') ? activeVideoUrl : `/${activeVideoUrl}`;
             absoluteVideoUrl = `${API_ORIGIN}${normalized}`;
         }
 
         const applySeekAndPlay = () => {
-            if (startPosition > 0) {
-                video.currentTime = startPosition;
+            const currentSecs = positionMillisRef.current > 5000 ? positionMillisRef.current / 1000 : startPosition;
+            if (currentSecs > 0) {
+                video.currentTime = currentSecs;
             }
             video.play().catch((err) => {
                 console.warn('[TVPlayer] Autoplay prevented or failed:', err);
@@ -401,12 +419,18 @@ export default function TVPlayer({ content, currentEpisode, streamData, videoUrl
                     const HlsClass = (window as any).Hls;
                     if (HlsClass && HlsClass.isSupported()) {
                         hlsInstance = new HlsClass();
+                        hlsRef.current = hlsInstance;
                         hlsInstance.loadSource(absoluteVideoUrl);
                         hlsInstance.attachMedia(video);
                         hlsInstance.on(HlsClass.Events.MANIFEST_PARSED, () => {
-                            if (startPosition > 0) {
-                                video.currentTime = startPosition;
+                            const currentSecs = positionMillisRef.current > 5000 ? positionMillisRef.current / 1000 : startPosition;
+                            if (currentSecs > 0) {
+                                video.currentTime = currentSecs;
                             }
+                            
+                            // El audio correcto ya viene marcado como DEFAULT=YES desde el servidor
+                            // gracias al parámetro ?audioIndex=N, por lo que hls.js lo seleccionará automáticamente.
+
                             video.play().catch((err) => {
                                 console.warn('[TVPlayer] HLS autoplay prevented:', err);
                             });
@@ -435,7 +459,7 @@ export default function TVPlayer({ content, currentEpisode, streamData, videoUrl
             if (hlsInstance) hlsInstance.destroy();
             video.removeEventListener('loadedmetadata', applySeekAndPlay);
         };
-    }, [videoUrl, startPosition]);
+    }, [activeVideoUrl, startPosition]);
 
     useEffect(() => {
         if (Platform.OS !== 'web' || !webVideoRef.current) return;
@@ -478,7 +502,7 @@ export default function TVPlayer({ content, currentEpisode, streamData, videoUrl
             video.removeEventListener('waiting', onWaiting);
             video.removeEventListener('error', onError);
         };
-    }, [loading, videoUrl]);
+    }, [loading, activeVideoUrl]);
 
     const togglePlayPause = async () => {
         showOSD();
@@ -544,6 +568,44 @@ export default function TVPlayer({ content, currentEpisode, streamData, videoUrl
             if (Platform.OS === 'web') webVideoRef.current?.play().catch(() => { });
         }
     }, [seekToPosition, showOSD]);
+
+    const changeAudio = useCallback((value: string | number) => {
+        console.log('[TVPlayer:changeAudio] value=', value, 'type=', typeof value, 'videoUrl=', videoUrl);
+        setSelectedAudio(value);
+        setActiveMenu(null);
+        showOSD();
+        
+        if (typeof value === 'number') {
+            setLoading(true);
+            const currentPos = positionMillisRef.current;
+            
+            // Force ExoPlayer/HLS.js to reload with the new default audio track
+            let newUrl = videoUrl;
+            if (newUrl.includes('?')) {
+                // If there's an existing audioIndex param, replace it; otherwise append it
+                if (newUrl.includes('audioIndex=')) {
+                    newUrl = newUrl.replace(/([?&])audioIndex=\d+/, `$1audioIndex=${value}`);
+                } else {
+                    newUrl = `${newUrl}&audioIndex=${value}`;
+                }
+            } else {
+                newUrl = `${newUrl}?audioIndex=${value}`;
+            }
+            
+            // Add a cache buster parameter to bypass browser/HLS.js memory caches
+            const timestamp = Date.now();
+            if (newUrl.includes('cb=')) {
+                newUrl = newUrl.replace(/([?&])cb=\d+/, `$1cb=${timestamp}`);
+            } else {
+                newUrl = `${newUrl}&cb=${timestamp}`;
+            }
+            
+            console.log('[TVPlayer:changeAudio] newUrl=', newUrl);
+            setActiveVideoUrl(newUrl);
+        } else {
+            console.log('[TVPlayer:changeAudio] value is not a number, skipping URL change');
+        }
+    }, [videoUrl, showOSD]);
 
     // Back button handling
     useEffect(() => {
@@ -612,9 +674,13 @@ export default function TVPlayer({ content, currentEpisode, streamData, videoUrl
         setIsLoaded(true);
         setLoading(false);
         setDurationMillis(data.duration * 1000);
-        if (startPosition > 0) {
-            videoRef.current?.seek(startPosition);
+        
+        // If we have a saved position in the ref (e.g. from an audio track change) or startPosition
+        const targetPos = positionMillisRef.current > 5000 ? positionMillisRef.current / 1000 : startPosition;
+        if (targetPos > 0) {
+            videoRef.current?.seek(targetPos);
         }
+        
         if (Array.isArray(data.audioTracks)) {
             setDetectedAudioTracks(data.audioTracks);
         }
@@ -645,15 +711,19 @@ export default function TVPlayer({ content, currentEpisode, streamData, videoUrl
     };
 
     const saveProgress = async (pos: number, dur: number) => {
-        if (pos === 0 || !contentId) return;
+        if (!pos || isNaN(pos) || pos === 0 || !contentId) return;
+        
+        const finalProgress = Math.floor(pos / 1000);
+        const finalDuration = (dur && !isNaN(dur) && dur > 0) ? Math.floor(dur / 1000) : undefined;
+
         try {
             await fetchApi(API_ROUTES.HISTORY.PROGRESS, {
                 method: 'POST',
                 body: JSON.stringify({
                     contentId,
                     episodeId,
-                    progress: Math.floor(pos / 1000),
-                    duration: dur > 0 ? Math.floor(dur / 1000) : undefined,
+                    progress: finalProgress,
+                    duration: finalDuration,
                 }),
             });
         } catch { }
@@ -743,8 +813,9 @@ export default function TVPlayer({ content, currentEpisode, streamData, videoUrl
                 />
             ) : (
                 <Video
+                    key={activeVideoUrl}
                     ref={videoRef}
-                    source={{ uri: videoUrl }}
+                    source={{ uri: activeVideoUrl }}
                     style={StyleSheet.absoluteFill}
                     resizeMode="contain"
                     paused={!isPlaying}
@@ -1062,15 +1133,19 @@ export default function TVPlayer({ content, currentEpisode, streamData, videoUrl
                             {activeMenu === 'audio' && (
                                 <ScrollView contentContainerStyle={{ padding: scale(24), gap: scale(16) }}>
                                     {audioList.map((aud: any, i: number) => {
-                                        // Always prefer numeric index for ExoPlayer audio track switching
-                                        const value: number | string = typeof aud.index === 'number' ? aud.index : (aud.language || i);
-                                        const isSelected = selectedAudio === value || (selectedAudio === 'auto' && aud.isDefault);
+                                        // SIEMPRE usar número para que changeAudio construya ?audioIndex=N
+                                        // Prioridad: aud.index > aud.trackIndex > posición i
+                                        const numericIndex: number =
+                                            typeof aud.index === 'number' ? aud.index :
+                                            typeof aud.trackIndex === 'number' ? aud.trackIndex :
+                                            i;
+                                        const isSelected = selectedAudio === numericIndex || (selectedAudio === 'auto' && i === 0);
                                         return (
                                             <TVSidebarItem
                                                 key={i}
                                                 ref={isSelected ? firstSidebarItemRef : undefined}
                                                 hasTVPreferredFocus={isSelected}
-                                                onPress={() => { setSelectedAudio(value); setActiveMenu(null); showOSD(); }}
+                                                onPress={() => changeAudio(numericIndex)}
                                                 style={s.trackItem}
                                             >
                                                 {(focused: boolean) => (

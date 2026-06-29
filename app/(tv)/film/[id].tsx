@@ -1,7 +1,7 @@
 import React, { useEffect, useState, useRef } from 'react';
 import {
     View, Text, ScrollView, StyleSheet,
-    Pressable, Dimensions, findNodeHandle,
+    Pressable, Dimensions, Platform,
 } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -20,6 +20,17 @@ import { scale } from '../../../lib/scale';
 
 const { width: SW, height: SH } = Dimensions.get('window');
 const TVFocusGuide = (require('react-native') as any).TVFocusGuideView ?? View;
+
+// Safe wrapper to prevent web crashes
+const safeFindNodeHandle = (componentOrHandle: any) => {
+    if (Platform.OS === 'web') return null;
+    try {
+        const find = (require('react-native') as any).findNodeHandle;
+        return find ? find(componentOrHandle) : null;
+    } catch {
+        return null;
+    }
+};
 
 // ─── Action Button ─────────────────────────────────────────────────────────────
 function ActionButton({
@@ -177,20 +188,22 @@ export default function FilmDetailScreen() {
     const episodes = currentSeason?.episodes || [];
 
     useEffect(() => {
+        if (Platform.OS === 'web') return;
+        
         const t = setTimeout(() => {
             const epsCount = episodes.length;
             epRefs.current = epRefs.current.slice(0, epsCount);
 
             epRefs.current.forEach((refItem, index) => {
                 if (!refItem) return;
-                const currentId = findNodeHandle(refItem);
+                const currentId = safeFindNodeHandle(refItem);
                 if (!currentId) return;
 
                 const prevRef = epRefs.current[index - 1];
                 const nextRef = epRefs.current[index + 1];
 
-                const prevId = prevRef ? findNodeHandle(prevRef) : currentId; // Loop to self if first
-                const nextId = nextRef ? findNodeHandle(nextRef) : currentId; // Loop to self if last
+                const prevId = prevRef ? safeFindNodeHandle(prevRef) : currentId; // Loop to self if first
+                const nextId = nextRef ? safeFindNodeHandle(nextRef) : currentId; // Loop to self if last
 
                 refItem.setNativeProps?.({
                     nextFocusLeft: prevId,

@@ -1,5 +1,5 @@
 import React, { useRef, memo, useState, useLayoutEffect, forwardRef } from 'react';
-import { View, Text, ScrollView, StyleSheet, Pressable, findNodeHandle } from 'react-native';
+import { View, Text, ScrollView, StyleSheet, Pressable, findNodeHandle, Platform } from 'react-native';
 import { ChevronRight } from 'lucide-react-native';
 import { useRouter } from 'expo-router';
 import { Colors } from '../../theme/colors';
@@ -70,6 +70,7 @@ function TVFilmRowInner({
 
   // Imperatively set self-loop after every render — no state, no re-renders
   useLayoutEffect(() => {
+    if (Platform.OS === 'web') return; // findNodeHandle / setNativeProps not available on web
     const timer = setTimeout(() => {
       if (firstRef.current) {
         const id = findNodeHandle(firstRef.current);

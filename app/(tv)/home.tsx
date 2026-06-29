@@ -188,7 +188,7 @@ export default function HomeScreen() {
                         <TVFilmRow
                             title="Continuar Viendo"
                             items={cwCards}
-                            variant="landscape"
+                            variant="poster"
                             onPressItem={(item) => {
                                 if (item.episodeId) {
                                     router.push({ pathname: `/(tv)/watch/${item.id}` as any, params: { episodeId: item.episodeId } });
@@ -200,23 +200,23 @@ export default function HomeScreen() {
                     )}
 
                     {trendingCards.length > 0 && (
-                        <TVFilmRow title="Tendencias" items={trendingCards} exploreRoute="/(tv)/explore" variant="landscape" />
+                        <TVFilmRow title="Tendencias" items={trendingCards} exploreRoute="/(tv)/explore" variant="poster" />
                     )}
 
                     {estrenosCards.length > 0 && (
-                        <TVFilmRow title="Estrenos" items={estrenosCards} exploreRoute="/(tv)/explore?sort=recent" variant="landscape" />
+                        <TVFilmRow title="Estrenos" items={estrenosCards} exploreRoute="/(tv)/explore?sort=recent" variant="poster" />
                     )}
 
                     {recentCards.length > 0 && (
-                        <TVFilmRow title="Últimos Agregados" items={recentCards} exploreRoute="/(tv)/explore?sort=recent" variant="landscape" />
+                        <TVFilmRow title="Últimos Agregados" items={recentCards} exploreRoute="/(tv)/explore?sort=recent" variant="poster" />
                     )}
 
                     {topSeriesCards.length > 0 && (
-                        <TVFilmRow title="Vistazo de Series" items={topSeriesCards} exploreRoute="/(tv)/explore?type=SERIES" variant="landscape" />
+                        <TVFilmRow title="Vistazo de Series" items={topSeriesCards} exploreRoute="/(tv)/explore?type=SERIES" variant="poster" />
                     )}
 
                     {topMoviesCards.length > 0 && (
-                        <TVFilmRow title="Vistazo de Películas" items={topMoviesCards} exploreRoute="/(tv)/explore?type=MOVIE" variant="landscape" />
+                        <TVFilmRow title="Vistazo de Películas" items={topMoviesCards} exploreRoute="/(tv)/explore?type=MOVIE" variant="poster" />
                     )}
                 </View>
             </ScrollView>
