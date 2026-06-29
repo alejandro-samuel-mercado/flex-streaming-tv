@@ -854,7 +854,7 @@ export default function TVPlayer({ content, currentEpisode, streamData, videoUrl
                     controls={false}
                     crossOrigin="anonymous"
                 >
-                    {externalTextTracks.map((track, i) => (
+                    {externalTextTracks.map((track: any, i) => (
                         <track
                             key={i}
                             src={track.uri}
