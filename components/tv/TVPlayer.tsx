@@ -354,6 +354,40 @@ export default function TVPlayer({ content, currentEpisode, streamData, videoUrl
         return allEpisodes.findIndex((e: any) => e.id === currentEpisode.id);
     }, [allEpisodes, currentEpisode]);
 
+    const subsList = useMemo(() => {
+        const dbSubs = streamData?.subtitleTracks || currentEpisode?.videoFiles?.[0]?.subtitleTracks || content?.videoFiles?.[0]?.subtitleTracks || [];
+        const mappedDetected = detectedTextTracks.map((t: any, idx: number) => ({
+            label: getLangLabel(t.language, t.title, t.name, `Subtítulo ${idx + 1}`),
+            language: t.language,
+            title: t.title || t.name,
+            type: t.type,
+            index: t.index !== undefined ? t.index : idx
+        }));
+
+        const combined = dbSubs.map((s: any) => ({
+            ...s,
+            label: getLangLabel(s.language, s.label, s.name, s.label),
+        }));
+        mappedDetected.forEach(dt => {
+            if (dt.language && !combined.some((c: any) => c.language === dt.language)) {
+                combined.push(dt);
+            } else if (!dt.language) {
+                combined.push(dt);
+            }
+        });
+        return combined;
+    }, [streamData, currentEpisode, content, detectedTextTracks]);
+
+    const externalTextTracks = useMemo(() => {
+        const dbSubs = streamData?.subtitleTracks || currentEpisode?.videoFiles?.[0]?.subtitleTracks || content?.videoFiles?.[0]?.subtitleTracks || [];
+        return dbSubs.filter((s: any) => s.url).map((s: any) => ({
+            title: s.label || s.name || s.language || 'Subtítulo',
+            language: s.language || 'es',
+            type: TextTrackType.VTT,
+            uri: s.url
+        }));
+    }, [streamData, currentEpisode, content]);
+
     const hasNext = currentIdx >= 0 && currentIdx < allEpisodes.length - 1;
     const hasPrev = currentIdx > 0;
 
@@ -503,6 +537,46 @@ export default function TVPlayer({ content, currentEpisode, streamData, videoUrl
             video.removeEventListener('error', onError);
         };
     }, [loading, activeVideoUrl]);
+
+    // Sync HTML5 Video TextTracks (Web) when selectedSub changes
+    useEffect(() => {
+        if (Platform.OS !== 'web' || !webVideoRef.current) return;
+        const video = webVideoRef.current;
+
+        const updateTracks = () => {
+            const tracks = video.textTracks;
+            if (!tracks) return;
+
+            for (let i = 0; i < tracks.length; i++) {
+                const track = tracks[i];
+                let isMatch = false;
+
+                if (selectedSub === 'off') {
+                    isMatch = false;
+                } else if (typeof selectedSub === 'number') {
+                    isMatch = (selectedSub === i);
+                } else if (typeof selectedSub === 'string') {
+                    if (selectedSub.startsWith('LANG:')) {
+                        isMatch = (track.language === selectedSub.replace('LANG:', ''));
+                    } else if (selectedSub.startsWith('TITLE:')) {
+                        isMatch = (track.label === selectedSub.replace('TITLE:', ''));
+                    }
+                }
+
+                track.mode = isMatch ? 'showing' : 'disabled';
+            }
+        };
+
+        // Run immediately
+        updateTracks();
+
+        // Also run when new tracks are added to the video element
+        video.textTracks.addEventListener('addtrack', updateTracks);
+        return () => {
+            video.textTracks.removeEventListener('addtrack', updateTracks);
+        };
+    }, [selectedSub, externalTextTracks]);
+
 
     const togglePlayPause = async () => {
         showOSD();
@@ -744,39 +818,7 @@ export default function TVPlayer({ content, currentEpisode, streamData, videoUrl
     const duration = durationMillis || 1;
     const progressPct = (position / duration) * 100;
 
-    const subsList = useMemo(() => {
-        const dbSubs = streamData?.subtitleTracks || currentEpisode?.videoFiles?.[0]?.subtitleTracks || content?.videoFiles?.[0]?.subtitleTracks || [];
-        const mappedDetected = detectedTextTracks.map((t: any, idx: number) => ({
-            label: getLangLabel(t.language, t.title, t.name, `Subtítulo ${idx + 1}`),
-            language: t.language,
-            title: t.title || t.name,
-            type: t.type,
-            index: t.index !== undefined ? t.index : idx
-        }));
 
-        const combined = dbSubs.map((s: any) => ({
-            ...s,
-            label: getLangLabel(s.language, s.label, s.name, s.label),
-        }));
-        mappedDetected.forEach(dt => {
-            if (dt.language && !combined.some((c: any) => c.language === dt.language)) {
-                combined.push(dt);
-            } else if (!dt.language) {
-                combined.push(dt);
-            }
-        });
-        return combined;
-    }, [streamData, currentEpisode, content, detectedTextTracks]);
-
-    const externalTextTracks = useMemo(() => {
-        const dbSubs = streamData?.subtitleTracks || currentEpisode?.videoFiles?.[0]?.subtitleTracks || content?.videoFiles?.[0]?.subtitleTracks || [];
-        return dbSubs.filter((s: any) => s.url).map((s: any) => ({
-            title: s.label || s.name || s.language || 'Subtítulo',
-            language: s.language || 'es',
-            type: TextTrackType.VTT,
-            uri: s.url
-        }));
-    }, [streamData, currentEpisode, content]);
 
     const audioList = useMemo(() => {
         const dbAudio = streamData?.audioTracks || currentEpisode?.videoFiles?.[0]?.audioTracks || content?.videoFiles?.[0]?.audioTracks || [];
@@ -810,7 +852,18 @@ export default function TVPlayer({ content, currentEpisode, streamData, videoUrl
                     autoPlay
                     playsInline
                     controls={false}
-                />
+                    crossOrigin="anonymous"
+                >
+                    {externalTextTracks.map((track, i) => (
+                        <track
+                            key={i}
+                            src={track.uri}
+                            kind="subtitles"
+                            srcLang={track.language}
+                            label={track.title}
+                        />
+                    ))}
+                </video>
             ) : (
                 <Video
                     key={activeVideoUrl}
