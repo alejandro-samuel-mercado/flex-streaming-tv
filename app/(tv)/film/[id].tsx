@@ -234,10 +234,10 @@ export default function FilmDetailScreen() {
     }, [id]);
 
     useEffect(() => {
-        if (!user || !id) return;
+        if (!user || !content?.id) return;
         const checkFavLike = async () => {
             try {
-                const favJson = await fetchApi(`${API_ROUTES.FAVORITES.BASE}/check/${id}`);
+                const favJson = await fetchApi(`${API_ROUTES.FAVORITES.BASE}/check/${content.id}`);
                 if (favJson && favJson.success) {
                     setIsFavorited(favJson.data.isFavorited);
                 }
@@ -246,7 +246,7 @@ export default function FilmDetailScreen() {
             }
 
             try {
-                const likeJson = await fetchApi(API_ROUTES.LIKES.CHECK(id));
+                const likeJson = await fetchApi(API_ROUTES.LIKES.CHECK(content.id));
                 if (likeJson && likeJson.success) {
                     setIsLiked(likeJson.data.isLiked);
                 }
@@ -255,14 +255,15 @@ export default function FilmDetailScreen() {
             }
         };
         checkFavLike();
-    }, [id, user]);
+    }, [content?.id, user]);
 
     const toggleFav = async () => {
         if (!user) { router.push('/(auth)/login'); return; }
+        if (!content?.id) return;
         const old = isFavorited;
         setIsFavorited(!old);
         try {
-            const json = await fetchApi(API_ROUTES.FAVORITES.TOGGLE, { method: 'POST', body: JSON.stringify({ contentId: id }) });
+            const json = await fetchApi(API_ROUTES.FAVORITES.TOGGLE, { method: 'POST', body: JSON.stringify({ contentId: content.id }) });
             if (json.success) setIsFavorited(json.data.favorited);
             else setIsFavorited(old);
         } catch { setIsFavorited(old); }
@@ -270,10 +271,11 @@ export default function FilmDetailScreen() {
 
     const toggleLike = async () => {
         if (!user) { router.push('/(auth)/login'); return; }
+        if (!content?.id) return;
         const old = isLiked;
         setIsLiked(!old);
         try {
-            const json = await fetchApi(API_ROUTES.LIKES.TOGGLE, { method: 'POST', body: JSON.stringify({ contentId: id }) });
+            const json = await fetchApi(API_ROUTES.LIKES.TOGGLE, { method: 'POST', body: JSON.stringify({ contentId: content.id }) });
             if (json.success) setIsLiked(json.data.liked);
             else setIsLiked(old);
         } catch { setIsLiked(old); }
