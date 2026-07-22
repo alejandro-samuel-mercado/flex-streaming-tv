@@ -1,4 +1,4 @@
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { Stack } from 'expo-router';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
@@ -6,8 +6,11 @@ import { StatusBar } from 'expo-status-bar';
 import { StyleSheet } from 'react-native';
 import { AuthProvider } from '../context/AuthContext';
 import { Colors } from '../theme/colors';
+import { checkForUpdate, UpdateInfo } from '../lib/update-checker';
+import { UpdateModal } from '../components/ui/UpdateModal';
 
 export default function RootLayout() {
+  const [updateInfo, setUpdateInfo] = useState<UpdateInfo | null>(null);
   useEffect(() => {
     // Safely lock to landscape — wrapped fully to never crash on TV boxes
     // which may not have a rotation sensor or may reject orientation lock calls
@@ -21,6 +24,14 @@ export default function RootLayout() {
     // Its native lifecycle listener (NavigationBarReactActivityLifecycleListener)
     // runs BEFORE JavaScript starts and crashes Android TV boxes
     // because they have no system navigation bar.
+
+    const timer = setTimeout(async () => {
+      // Pasamos explícitamente 'tv'
+      const info = await checkForUpdate('tv');
+      if (info) setUpdateInfo(info);
+    }, 3000);
+
+    return () => clearTimeout(timer);
   }, []);
 
   return (
@@ -33,6 +44,14 @@ export default function RootLayout() {
             <Stack.Screen name="(auth)" />
             <Stack.Screen name="(tv)" />
           </Stack>
+
+          {/* Update notification modal */}
+          {updateInfo && (
+            <UpdateModal
+              updateInfo={updateInfo}
+              onDismiss={() => setUpdateInfo(null)}
+            />
+          )}
         </AuthProvider>
       </SafeAreaProvider>
     </GestureHandlerRootView>

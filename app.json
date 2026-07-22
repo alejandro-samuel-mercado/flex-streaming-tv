@@ -57,7 +57,10 @@
     },
     "scheme": "nubatv",
     "extra": {
-      "router": {}
+      "router": {},
+      "eas": {
+        "projectId": "0e3c8617-e1db-466e-ad9c-02bce8c6ae7e"
+      }
     }
   }
 }

@@ -461,7 +461,7 @@ export default function TVPlayer({ content, currentEpisode, streamData, videoUrl
                             if (currentSecs > 0) {
                                 video.currentTime = currentSecs;
                             }
-                            
+
                             // El audio correcto ya viene marcado como DEFAULT=YES desde el servidor
                             // gracias al parámetro ?audioIndex=N, por lo que hls.js lo seleccionará automáticamente.
 
@@ -648,11 +648,11 @@ export default function TVPlayer({ content, currentEpisode, streamData, videoUrl
         setSelectedAudio(value);
         setActiveMenu(null);
         showOSD();
-        
+
         if (typeof value === 'number') {
             setLoading(true);
             const currentPos = positionMillisRef.current;
-            
+
             // Force ExoPlayer/HLS.js to reload with the new default audio track
             let newUrl = videoUrl;
             if (newUrl.includes('?')) {
@@ -665,7 +665,7 @@ export default function TVPlayer({ content, currentEpisode, streamData, videoUrl
             } else {
                 newUrl = `${newUrl}?audioIndex=${value}`;
             }
-            
+
             // Add a cache buster parameter to bypass browser/HLS.js memory caches
             const timestamp = Date.now();
             if (newUrl.includes('cb=')) {
@@ -673,7 +673,7 @@ export default function TVPlayer({ content, currentEpisode, streamData, videoUrl
             } else {
                 newUrl = `${newUrl}&cb=${timestamp}`;
             }
-            
+
             console.log('[TVPlayer:changeAudio] newUrl=', newUrl);
             setActiveVideoUrl(newUrl);
         } else {
@@ -748,13 +748,13 @@ export default function TVPlayer({ content, currentEpisode, streamData, videoUrl
         setIsLoaded(true);
         setLoading(false);
         setDurationMillis(data.duration * 1000);
-        
+
         // If we have a saved position in the ref (e.g. from an audio track change) or startPosition
         const targetPos = positionMillisRef.current > 5000 ? positionMillisRef.current / 1000 : startPosition;
         if (targetPos > 0) {
             videoRef.current?.seek(targetPos);
         }
-        
+
         if (Array.isArray(data.audioTracks)) {
             setDetectedAudioTracks(data.audioTracks);
         }
@@ -786,7 +786,7 @@ export default function TVPlayer({ content, currentEpisode, streamData, videoUrl
 
     const saveProgress = async (pos: number, dur: number) => {
         if (!pos || isNaN(pos) || pos === 0 || !contentId) return;
-        
+
         const finalProgress = Math.floor(pos / 1000);
         const finalDuration = (dur && !isNaN(dur) && dur > 0) ? Math.floor(dur / 1000) : undefined;
 
@@ -854,7 +854,7 @@ export default function TVPlayer({ content, currentEpisode, streamData, videoUrl
                     controls={false}
                     crossOrigin="anonymous"
                 >
-                    {externalTextTracks.map((track: any, i) => (
+                    {externalTextTracks.map((track: any, i: any) => (
                         <track
                             key={i}
                             src={track.uri}
@@ -1164,11 +1164,11 @@ export default function TVPlayer({ content, currentEpisode, streamData, videoUrl
 
                                         const isSelected = selectedSub === value;
                                         return (
-                                            <TVSidebarItem 
-                                                key={i} 
+                                            <TVSidebarItem
+                                                key={i}
                                                 hasTVPreferredFocus={isSelected}
                                                 ref={isSelected ? firstSidebarItemRef : undefined}
-                                                onPress={() => { setSelectedSub(value); setActiveMenu(null); showOSD(); }} 
+                                                onPress={() => { setSelectedSub(value); setActiveMenu(null); showOSD(); }}
                                                 style={s.trackItem}
                                             >
                                                 {(focused: boolean) => (
@@ -1190,8 +1190,8 @@ export default function TVPlayer({ content, currentEpisode, streamData, videoUrl
                                         // Prioridad: aud.index > aud.trackIndex > posición i
                                         const numericIndex: number =
                                             typeof aud.index === 'number' ? aud.index :
-                                            typeof aud.trackIndex === 'number' ? aud.trackIndex :
-                                            i;
+                                                typeof aud.trackIndex === 'number' ? aud.trackIndex :
+                                                    i;
                                         const isSelected = selectedAudio === numericIndex || (selectedAudio === 'auto' && i === 0);
                                         return (
                                             <TVSidebarItem
