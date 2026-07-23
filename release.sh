@@ -14,7 +14,7 @@ CURRENT_NAME=$(node -e "console.log(require('$VERSION_FILE').versionName)")
 
 echo ""
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-echo "  🚀 Nuba TV Release Builder (LOCAL)"
+echo "  🚀 Nuba TV Release Builder (CLOUD)"
 echo "  Versión actual: $CURRENT_NAME (code $CURRENT_CODE)"
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 
@@ -49,29 +49,27 @@ APK_NAME="NUBA-TV-V${FINAL_NAME}.apk"
 LOCAL_OUT="$SCRIPT_DIR/$APK_NAME"
 
 echo ""
-echo "🔨 Iniciando compilación LOCAL..."
-echo "Comando: npx eas-cli build -p android --profile tv-production --local"
+echo "🔨 Iniciando compilación en la NUBE..."
+echo "Comando: npx eas-cli build -p android --profile tv-production"
 echo ""
 
 cd "$SCRIPT_DIR"
 
-# Se ejecuta en local y se guarda en la carpeta actual con el nombre final
+# Se ejecuta en la nube de Expo
 npx eas-cli build \
     -p android \
-    --profile tv-production \
-    --local \
-    --output "$LOCAL_OUT"
+    --profile tv-production
 
 echo ""
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-echo "  ✅ APK GENERADO LOCALMENTE:"
-echo "  👉 $LOCAL_OUT"
+echo "  ✅ COMPILACIÓN ENVIADA A LA NUBE"
+echo "  👉 Usa el link que te da Expo arriba para descargar tu APK (.apk) cuando termine."
 echo ""
 echo "  PRÓXIMOS PASOS:"
-echo "  1. Entrá al Panel de Control alojado en tu VPS."
-echo "  2. Ve a 'Aplicación Móvil & TV' -> Nueva Versión."
-echo "  3. Subí este archivo APK que se acaba de generar."
-echo "  4. Escribí las novedades (Changelog) desde el mismo panel web."
-echo "  (El panel se encargará de guardar el APK y el .txt en el VPS)."
+echo "  1. Entrá al link de Expo de arriba, esperá a que termine y descargá el APK."
+echo "  2. Entrá al Panel de Control alojado en tu VPS."
+echo "  3. Ve a 'Aplicación Móvil & TV' -> Nueva Versión."
+echo "  4. Subí el archivo APK que descargaste."
+echo "  5. Escribí las novedades (Changelog) desde el mismo panel web."
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 echo ""
