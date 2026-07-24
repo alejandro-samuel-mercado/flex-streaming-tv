@@ -1,7 +1,8 @@
+import TVTopNav from "../../components/tv/TVTopNav";
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
     View, Text, StyleSheet, FlatList, ActivityIndicator,
-    Dimensions, Pressable, TextInput, ScrollView
+    Dimensions, Pressable, TextInput, ScrollView, DeviceEventEmitter
 } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import Animated from 'react-native-reanimated';
@@ -156,6 +157,10 @@ export default function ExploreScreen() {
 
     // Filters State
     const [currentType, setCurrentType] = useState(urlTypeParam);
+
+    useEffect(() => {
+        setCurrentType((params.type as string) || '');
+    }, [params.type]);
     const [sort, setSort] = useState('recent');
     const [genreId, setGenreId] = useState('');
     const [platformId, setPlatformId] = useState('');
@@ -272,11 +277,13 @@ export default function ExploreScreen() {
                 return items.map((f: any) => {
                     const item = f.content || f;
                     const backdrop = item.thumbnails?.find((t: any) => t.type === 'BACKDROP') || item.thumbnails?.find((t: any) => t.type === 'BANNER');
+                    const poster = item.thumbnails?.find((t: any) => t.type === 'POSTER');
                     return {
                         id: item.id,
                         title: item.translations?.find((t: any) => t.language === 'es')?.title || item.translations?.[0]?.title || '',
                         description: item.translations?.find((t: any) => t.language === 'es')?.description || item.translations?.[0]?.description || '',
                         backdropUrl: backdrop?.url,
+                        posterUrl: poster?.url,
                         rating: item.rating, year: item.releaseYear, ageRating: item.ageRating?.code, type: item.type,
                         genres: item.genres?.map((g: any) => g.genre?.name || g.name),
                     };
@@ -338,17 +345,6 @@ export default function ExploreScreen() {
             const gMap: Record<string, any[]> = {};
             genreDataArr.forEach(({ id, data }) => { if (data.length > 0) gMap[id] = mapToCards(data); });
             setCatGenreRows(gMap);
-
-            const platDataArr = await Promise.all(
-                platformList.slice(0, 5).map((p: any) =>
-                    fetchApi(`${API_ROUTES.CONTENT.LIST}?type=${currentType}&platformId=${p.id}&sort=popular&limit=10`)
-                        .then((r: any) => ({ id: p.id, name: p.name, data: r?.success && Array.isArray(r.data) ? r.data : [] }))
-                        .catch(() => ({ id: p.id, name: p.name, data: [] }))
-                )
-            );
-            const pMap: Record<string, any[]> = {};
-            platDataArr.forEach(({ id, data }) => { if (data.length > 0) pMap[id] = mapToCards(data); });
-            setCatPlatformRows(pMap);
         }
     }, [currentType, mapToCards, forceFilterGrid]);
 
@@ -551,11 +547,15 @@ export default function ExploreScreen() {
         return (
             <View style={s.root}>
                 <TVCosmicBackground />
-                <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: scale(100) }}>
+                <ScrollView 
+                    showsVerticalScrollIndicator={false} 
+                    contentContainerStyle={{ paddingBottom: scale(100) }}
+                >
+                    <TVTopNav />
                     {catHeroSlides.length > 0 && (
-                        <TVHeroBanner slides={catHeroSlides} sectionLabel={sectionLabel} />
+                        <TVHeroBanner slides={catHeroSlides} sectionLabel={sectionLabel} hideThumbnails={true} hidePlatforms={true} />
                     )}
-                    <View style={{ marginTop: catHeroSlides.length > 0 ? -scale(140) : scale(32), zIndex: 10, paddingBottom: scale(60) }}>
+                    <View style={{ marginTop: catHeroSlides.length > 0 ? -scale(230) : scale(32), zIndex: 10, paddingBottom: scale(60) }}>
                         {/* "Todos" row */}
                         {catAllItems.length > 0 && (
                             <TVFilmRow
@@ -578,19 +578,6 @@ export default function ExploreScreen() {
                                 variant="poster"
                                 onPressViewMore={() => {
                                     setPendingExploreFilters({ type: currentType, genreId: genre.id, sort: 'popular' });
-                                    router.push('/(tv)/explore' as any);
-                                }}
-                            />
-                        ))}
-                        {/* Platform rows */}
-                        {catPlatforms.filter(p => catPlatformRows[p.id]?.length > 0).map((platform: any) => (
-                            <TVFilmRow
-                                key={`platform-${platform.id}`}
-                                title={platform.name}
-                                items={catPlatformRows[platform.id] || []}
-                                variant="landscape"
-                                onPressViewMore={() => {
-                                    setPendingExploreFilters({ type: currentType, platformId: platform.id, sort: 'popular' });
                                     router.push('/(tv)/explore' as any);
                                 }}
                             />

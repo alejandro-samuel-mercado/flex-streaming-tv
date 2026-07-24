@@ -1,8 +1,10 @@
+import TVTopNav from "../../components/tv/TVTopNav";
 import React, { useEffect, useState, useCallback, useRef, useMemo } from 'react';
-import { View, ScrollView, StyleSheet, Text, FlatList } from 'react-native';
+import { View, ScrollView, StyleSheet, Text, FlatList, DeviceEventEmitter } from 'react-native';
 import TVFocusable from '../../components/tv/TVFocusable';
 import { Colors } from '../../theme/colors';
 import TVHeroBanner from '../../components/tv/TVHeroBanner';
+import TVCosmicBackground from '../../components/tv/TVCosmicBackground';
 import TVFilmRow from '../../components/tv/TVFilmRow';
 import TVPlatformRow from '../../components/tv/TVPlatformRow';
 import { TVHomeSkeleton } from '../../components/tv/TVSkeleton';
@@ -113,6 +115,7 @@ export default function HomeScreen() {
             const item = f.content || f;
             if (!item) return null;
             const backdrop = item.thumbnails?.find((t: any) => t.type === 'BACKDROP') || item.thumbnails?.find((t: any) => t.type === 'BANNER');
+            const poster = item.thumbnails?.find((t: any) => t.type === 'POSTER');
                 const itemType = item.type;
                 let isUpcoming = item.status ? (item.status !== 'READY' && item.status !== 'ACTIVE') : false;
 
@@ -130,6 +133,7 @@ export default function HomeScreen() {
                     title: item.translations?.[0]?.title || '',
                     description: item.translations?.[0]?.description || '',
                     backdropUrl: backdrop?.url,
+                    posterUrl: poster?.url,
                     rating: item.rating,
                     year: item.releaseYear,
                     ageRating: item.ageRating?.code,
@@ -153,6 +157,7 @@ export default function HomeScreen() {
     if (loading && !data) {
         return (
             <View style={s.container}>
+                <TVCosmicBackground />
                 <TVHomeSkeleton />
             </View>
         );
@@ -161,6 +166,7 @@ export default function HomeScreen() {
     if (error) {
         return (
             <View style={s.errorContainer}>
+                <TVCosmicBackground />
                 <Text style={s.errorTitle}>No se pudo conectar con el servidor</Text>
                 <Text style={s.errorText}>{error}</Text>
                 <View style={{ marginTop: 24 }}>
@@ -176,14 +182,14 @@ export default function HomeScreen() {
 
     return (
         <View style={s.container}>
-            <ScrollView showsVerticalScrollIndicator={false}>
+            <TVCosmicBackground />
+            <ScrollView 
+                showsVerticalScrollIndicator={false}
+            >
+                <TVTopNav />
                 <TVHeroBanner slides={heroSlides} sectionLabel="Inicio" />
 
                 <View style={s.rowsContainer}>
-                    {data?.platforms?.length > 0 && (
-                        <TVPlatformRow title="Plataformas" items={data.platforms} />
-                    )}
-
                     {user && cwCards.length > 0 && (
                         <TVFilmRow
                             title="Continuar Viendo"
@@ -225,15 +231,15 @@ export default function HomeScreen() {
 }
 
 const s = StyleSheet.create({
-    container: { flex: 1, backgroundColor: '#050814' },
+    container: { flex: 1, backgroundColor: 'transparent' },
     loader: { flex: 1, justifyContent: 'center', alignItems: 'center' },
-    errorContainer: { flex: 1, justifyContent: 'center', alignItems: 'center', paddingHorizontal: 40 },
+    errorContainer: { flex: 1, justifyContent: 'center', alignItems: 'center', paddingHorizontal: 40, backgroundColor: 'transparent' },
     errorTitle: { fontSize: 22, fontWeight: '800', color: Colors.white, marginBottom: 8 },
     errorText: { fontSize: 14, color: Colors.error, textAlign: 'center', lineHeight: 20, marginBottom: 16 },
     retryBtn: { paddingHorizontal: 32, paddingVertical: 12, backgroundColor: Colors.white, borderRadius: 24 },
     retryText: { color: Colors.black, fontWeight: '800', fontSize: scale(14) },
     rowsContainer: {
-        marginTop: scale(-160),
+        marginTop: 30,
         zIndex: 10,
     },
 });

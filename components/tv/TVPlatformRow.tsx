@@ -38,7 +38,7 @@ function TVPlatformRowInner({ title }: { title: string; items?: any[] }) {
                         style={[
                             s.circle,
                             { backgroundColor: 'rgba(0,0,0,0.6)' },
-                            index !== STATIC_PLATFORMS.length - 1 && { marginRight: scale(20) }
+                            index !== STATIC_PLATFORMS.length - 1 && { marginRight: scale(14) }
                         ]}
                     >
                         <Image
@@ -55,37 +55,37 @@ function TVPlatformRowInner({ title }: { title: string; items?: any[] }) {
 
 const s = StyleSheet.create({
     section: {
-        marginBottom: scale(36),
+        marginBottom: scale(28),
     },
     header: {
         paddingHorizontal: scale(56),
-        marginBottom: scale(14),
+        marginBottom: scale(1),
     },
     sectionTitle: {
-        fontSize: scale(20),
+        fontSize: scale(16), // Smaller title
         fontWeight: '700',
-        color: '#FFFFFF',
+        color: 'rgba(255,255,255,0.7)', // Slightly dimmed
         letterSpacing: 0.4,
     },
     listContent: {
         flexDirection: 'row',
         paddingHorizontal: scale(56),
-        paddingTop: scale(12),
-        paddingBottom: scale(12),
+        paddingTop: scale(8),
+        paddingBottom: scale(8),
     },
     circle: {
-        width: scale(84),
-        height: scale(84),
-        borderRadius: scale(42),
+        width: scale(54), // Smaller circles
+        height: scale(54),
+        borderRadius: scale(27),
         overflow: 'hidden',
-        borderWidth: 2.5,
-        borderColor: 'rgba(255,255,255,0.08)',
+        borderWidth: 2,
+        borderColor: 'rgba(255,255,255,0.1)',
         justifyContent: 'center',
         alignItems: 'center',
     },
     logo: {
-        width: '74%',
-        height: '74%',
+        width: '65%',
+        height: '65%',
     },
 });
 

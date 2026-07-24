@@ -1,83 +1,44 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, Pressable } from 'react-native';
+import { View, Text, StyleSheet, Pressable, DeviceEventEmitter } from 'react-native';
 import { useRouter, usePathname, useGlobalSearchParams } from 'expo-router';
-
-import { Search, User, Heart } from 'lucide-react-native';
+import Animated, { useSharedValue, useAnimatedStyle, withTiming, Easing } from 'react-native-reanimated';
+import { Search, User } from 'lucide-react-native';
 import { Colors } from '../../theme/colors';
 import { Image } from 'expo-image';
 import { useAuth } from '../../context/AuthContext';
 import { scale } from '../../lib/scale';
-import { fetchApi } from '../../lib/api-client';
-import { API_ROUTES } from '../../lib/api-routes';
 
-// "Inicio" and "Explorar" are fixed items
-const HOME_ITEM = { key: 'home', label: 'Inicio', route: '/(tv)/home', type: null as string | null };
-const EXPLORE_ITEM = { key: 'explore', label: 'Explorar', route: '/(tv)/explore', type: null as string | null };
+const NAV_ITEMS = [
+    { key: 'search', label: '', icon: Search, route: { pathname: '/(tv)/explore', params: { focusSearch: '1' } } },
+    { key: 'home', label: 'Inicio', route: '/(tv)/home' },
+    { key: 'MOVIE', label: 'Películas', route: { pathname: '/(tv)/explore', params: { type: 'MOVIE' } }, type: 'MOVIE' },
+    { key: 'SERIES', label: 'Series', route: { pathname: '/(tv)/explore', params: { type: 'SERIES' } }, type: 'SERIES' },
+    { key: 'ANIME', label: 'Animes', route: { pathname: '/(tv)/explore', params: { type: 'ANIME' } }, type: 'ANIME' },
+    { key: 'KIDS', label: 'Infantiles', route: { pathname: '/(tv)/explore', params: { type: 'KIDS' } }, type: 'KIDS' },
+    { key: 'mynuba', label: 'Mi Nuba', route: '/(tv)/my-nuba' },
+];
 
 export default function TVTopNav() {
     const router = useRouter();
     const pathname = usePathname();
     const { user } = useAuth();
     const params = useGlobalSearchParams();
-
-    // Dynamic nav items from backend content types
-    const [typeItems, setTypeItems] = useState<{ key: string; label: string; route: string; type: string }[]>([]);
-
-    // Translation dictionary for backend types
-    const TYPE_LABELS: Record<string, string> = {
-        'MOVIE': 'Películas',
-        'SERIES': 'Series',
-        'ANIME': 'Anime',
-        'KDRAMA': 'K-Dramas'
-    };
-
-    // Wanted order
-    const WANTED_TYPES = ['MOVIE', 'SERIES', 'ANIME', 'KDRAMA'];
-
-    useEffect(() => {
-        fetchApi(API_ROUTES.CATEGORIES.CONTENT_TYPES)
-            .then((res: any) => {
-                if (res?.success && Array.isArray(res.data)) {
-                    const items: any[] = [];
-                    WANTED_TYPES.forEach(wt => {
-                        if (res.data.includes(wt)) {
-                            items.push({
-                                key: wt,
-                                label: TYPE_LABELS[wt] || wt,
-                                route: `/(tv)/explore?type=${wt}`,
-                                type: wt
-                            });
-                        }
-                    });
-                    setTypeItems(items.length > 0 ? items : fallbackItems);
-                }
-            })
-            .catch(() => {
-                setTypeItems(fallbackItems);
-            });
-    }, []);
-
-    const fallbackItems = [
-        { key: 'MOVIE', label: 'Películas', route: '/(tv)/explore?type=MOVIE', type: 'MOVIE' },
-        { key: 'SERIES', label: 'Series', route: '/(tv)/explore?type=SERIES', type: 'SERIES' },
-        { key: 'ANIME', label: 'Anime', route: '/(tv)/explore?type=ANIME', type: 'ANIME' },
-        { key: 'KDRAMA', label: 'K-Dramas', route: '/(tv)/explore?type=KDRAMA', type: 'KDRAMA' },
-    ];
-
-    const allItems = [HOME_ITEM, EXPLORE_ITEM, ...(typeItems.length > 0 ? typeItems : fallbackItems)];
-
-    const getIsActive = (item: typeof allItems[0]) => {
+    
+    // Nav is always visible now as requested by user
+    const getIsActive = (item: typeof NAV_ITEMS[0]) => {
+        if (item.key === 'search') return false; // Search is just an action
         const isHome = pathname === '/(tv)/home' || pathname === '/home' || pathname === '/';
         const isExplorePath = pathname === '/(tv)/explore' || pathname === '/explore';
+        const isMyNuba = pathname === '/(tv)/my-nuba';
 
         if (item.key === 'home') return isHome;
-        if (item.key === 'explore') return isExplorePath && !params.type;
+        if (item.key === 'mynuba') return isMyNuba;
         if (item.type) return isExplorePath && params.type === item.type;
         return false;
     };
 
     return (
-        <View style={s.container}>
+        <View style={s.container} pointerEvents="auto">
             {/* Left: Logo */}
             <View style={s.leftArea}>
                 <Image
@@ -87,97 +48,63 @@ export default function TVTopNav() {
                 />
             </View>
 
-            {/* Center: Floating nav pills container — includes search icon */}
+            {/* Center: Modern Nav Pills */}
             <View style={s.centerNavWrapper}>
                 <View style={s.centerNav}>
-                    {allItems.map((item) => (
+                    {NAV_ITEMS.map((item) => (
                         <NavPill
                             key={item.key}
-                            label={item.label}
+                            item={item}
                             isActive={getIsActive(item)}
                             onPress={() => router.push(item.route as any)}
                         />
                     ))}
-                    {/* Separator */}
-                    <View style={s.navSeparator} />
-                    {/* Search inside floating pill */}
-                    <IconBtn onPress={() => router.push({ pathname: '/(tv)/explore', params: { focusSearch: Date.now().toString() } } as any)}>
-                        <Search size={scale(16)} color={Colors.white} />
-                    </IconBtn>
                 </View>
             </View>
 
-            {/* Right: Favorites & User */}
+            {/* Right: User */}
             <View style={s.rightArea}>
-                {!!user && (
-                    <IconBtn onPress={() => router.push('/(tv)/favorites')}>
-                        <Heart
-                            size={scale(22)}
-                            color={pathname === '/(tv)/favorites' || pathname === '/favorites' ? Colors.accent : Colors.white}
-                            fill={pathname === '/(tv)/favorites' || pathname === '/favorites' ? Colors.accent : 'transparent'}
-                        />
-                    </IconBtn>
-                )}
-                <UserBtn
-                    onPress={() => router.push('/(tv)/profile')}
-                />
+                <UserBtn onPress={() => router.push('/(tv)/profile')} />
             </View>
         </View>
     );
 }
 
-// ─── NavPill ───────────────────────────────────────────────────────────────────
-function NavPill({ label, isActive, onPress }: { label: string; isActive: boolean; onPress: () => void }) {
+function NavPill({ item, isActive, onPress }: { item: typeof NAV_ITEMS[0]; isActive: boolean; onPress: () => void }) {
     const [focused, setFocused] = useState(false);
+    const Icon = item.icon;
 
     return (
         <Pressable
             focusable
-            onFocus={() => setFocused(true)}
+            onFocus={() => {
+                setFocused(true);
+            }}
             onBlur={() => setFocused(false)}
             onPress={onPress}
             style={[
                 s.pill,
                 isActive && s.pillActive,
-                focused && !isActive && s.pillFocused
+                focused && !isActive && s.pillFocused,
+                item.key === 'search' && s.searchPill
             ]}
         >
-            <View style={focused ? { transform: [{ scale: 1.08 }] } : undefined}>
-                <Text style={[
-                    s.pillText,
-                    isActive && s.pillTextActive,
-                    focused && !isActive && s.pillTextFocused,
-                ]}>
-                    {label}
-                </Text>
+            <View style={[s.pillContent, focused ? { transform: [{ scale: 1.05 }] } : undefined]}>
+                {Icon && <Icon size={scale(18)} color={isActive ? Colors.black : (focused ? Colors.white : '#D1D5DB')} />}
+                {!!item.label && (
+                    <Text style={[
+                        s.pillText,
+                        isActive && s.pillTextActive,
+                        focused && !isActive && s.pillTextFocused,
+                    ]}>
+                        {item.label}
+                    </Text>
+                )}
             </View>
         </Pressable>
     );
 }
 
-// ─── IconBtn ───────────────────────────────────────────────────────────────────
-function IconBtn({ onPress, children }: any) {
-    const [focused, setFocused] = useState(false);
-
-    return (
-        <Pressable
-            focusable
-            onFocus={() => setFocused(true)}
-            onBlur={() => setFocused(false)}
-            onPress={onPress}
-            style={[
-                s.iconBtn,
-                focused && s.iconBtnFocused
-            ]}
-        >
-            <View style={focused ? { transform: [{ scale: 1.1 }] } : undefined}>
-                {children}
-            </View>
-        </Pressable>
-    );
-}
-
-// ─── UserBtn ───────────────────────────────────────────────────────────────────
 function UserBtn({ onPress }: any) {
     const { user } = useAuth();
     const [focused, setFocused] = useState(false);
@@ -185,7 +112,9 @@ function UserBtn({ onPress }: any) {
     return (
         <Pressable
             focusable
-            onFocus={() => setFocused(true)}
+            onFocus={() => {
+                setFocused(true);
+            }}
             onBlur={() => setFocused(false)}
             onPress={onPress}
             style={[
@@ -212,12 +141,12 @@ const s = StyleSheet.create({
     container: {
         position: 'absolute',
         top: 0, left: 0, right: 0,
-        height: scale(100),
+        height: scale(90),
         flexDirection: 'row',
         alignItems: 'center',
         justifyContent: 'space-between',
         paddingHorizontal: scale(56),
-        paddingTop: scale(32),
+        paddingTop: scale(16),
         zIndex: 9999,
     },
     leftArea: {
@@ -239,73 +168,67 @@ const s = StyleSheet.create({
     centerNav: {
         flexDirection: 'row',
         alignItems: 'center',
-        backgroundColor: 'rgba(255,255,255,0.06)',
-        paddingHorizontal: scale(8),
-        paddingVertical: scale(8),
-        borderRadius: scale(40),
-        gap: scale(4),
-        borderWidth: 1,
-        borderColor: 'rgba(255,255,255,0.08)',
-    },
-    navSeparator: {
-        width: 1,
-        height: scale(24),
-        backgroundColor: 'rgba(255,255,255,0.15)',
-        marginHorizontal: scale(4),
-    },
-    rightArea: {
-        width: scale(150),
-        flexDirection: 'row',
-        alignItems: 'center',
-        justifyContent: 'flex-end',
-        gap: scale(16),
+        gap: scale(12),
+        paddingHorizontal: scale(10),
+        paddingVertical: scale(10),
     },
     pill: {
-        paddingHorizontal: scale(20),
-        paddingVertical: scale(10),
-        borderRadius: scale(24),
+        paddingHorizontal: scale(24),
+        paddingVertical: scale(12),
+        borderRadius: scale(30),
         borderWidth: 2,
         borderColor: 'transparent',
+    },
+    searchPill: {
+        paddingHorizontal: scale(16),
     },
     pillActive: {
         backgroundColor: '#FFFFFF',
     },
     pillFocused: {
-        borderColor: '#FFFFFF',
-        backgroundColor: 'rgba(255,255,255,0.15)',
+        borderColor: 'rgba(0, 229, 255, 0.5)',
+        backgroundColor: 'rgba(0, 229, 255, 0.1)',
+    },
+    pillContent: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'center',
+        gap: scale(8),
     },
     pillText: {
-        fontSize: scale(16),
+        fontSize: scale(17),
         fontWeight: '600',
         color: '#D1D5DB',
         letterSpacing: 0.3,
     },
     pillTextActive: {
         color: '#000000',
-        fontWeight: '800',
+        fontWeight: '900',
     },
     pillTextFocused: {
         color: '#FFFFFF',
     },
+    rightArea: {
+        width: scale(150),
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'flex-end',
+    },
     iconBtn: {
-        width: scale(44),
-        height: scale(44),
-        borderRadius: scale(22),
+        width: scale(50),
+        height: scale(50),
+        borderRadius: scale(25),
         justifyContent: 'center',
         alignItems: 'center',
         backgroundColor: 'transparent',
         borderWidth: 2,
         borderColor: 'transparent',
     },
-    iconBtnFocused: {
-        backgroundColor: 'rgba(255,255,255,0.15)',
-        borderColor: '#FFFFFF',
-    },
     avatarBtn: {
         backgroundColor: '#E5E7EB',
     },
     avatarBtnFocused: {
-        borderColor: '#FFFFFF',
+        borderColor: '#00E5FF',
         borderWidth: 2,
     }
 });

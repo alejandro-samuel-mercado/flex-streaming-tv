@@ -1,3 +1,4 @@
+import TVTopNav from "../../../components/tv/TVTopNav";
 import React, { useEffect, useState, useRef } from 'react';
 import {
     View, Text, ScrollView, StyleSheet,
@@ -32,7 +33,6 @@ const safeFindNodeHandle = (componentOrHandle: any) => {
     }
 };
 
-// ─── Action Button ─────────────────────────────────────────────────────────────
 function ActionButton({
     label, icon: Icon, onPress, primary, active, disabled, hasTVPreferredFocus,
 }: {
@@ -46,7 +46,7 @@ function ActionButton({
 }) {
     const [focused, setFocused] = useState(false);
     return (
-        <Pressable
+        <TVPressable
             focusable
             hasTVPreferredFocus={hasTVPreferredFocus}
             disabled={disabled}
@@ -55,29 +55,61 @@ function ActionButton({
             onPress={onPress}
             style={[
                 s.actionBtn,
-                primary && s.actionBtnPrimary,
-                !primary && s.actionBtnSecondary,
+                primary ? s.actionBtnPrimary : s.actionBtnSecondary,
                 active && { backgroundColor: 'rgba(0,195,255,0.12)', borderColor: 'rgba(0,195,255,0.4)', borderWidth: 2 },
                 focused && (primary ? s.actionBtnPrimaryFocused : s.actionBtnSecondaryFocused),
                 disabled && s.actionBtnDisabled,
             ]}
         >
             <Icon
-                size={scale(22)}
+                size={primary ? scale(20) : scale(20)}
                 fill={active ? Colors.accent : (primary ? (focused ? Colors.white : Colors.black) : 'transparent')}
                 color={active ? Colors.accent : (primary ? (focused ? Colors.white : Colors.black) : (focused ? Colors.black : Colors.white))}
                 strokeWidth={2.5}
             />
-            <Text style={[
-                s.actionBtnText,
-                primary && s.actionBtnTextPrimary,
-                active && { color: Colors.accent },
-                focused && s.actionBtnTextFocused,
-                primary && focused && { color: Colors.white },
-            ]}>
-                {label}
+            {!!label && (
+                <Text style={[
+                    s.actionBtnText,
+                    primary ? s.actionBtnTextPrimary : s.actionBtnTextSecondary,
+                    active && { color: Colors.accent },
+                    focused && s.actionBtnTextFocused,
+                    primary && focused && { color: Colors.white },
+                ]}>
+                    {label}
+                </Text>
+            )}
+        </TVPressable>
+    );
+}
+
+// ─── Expandable Description ────────────────────────────────────────────────────
+function ExpandableDescription({ text }: { text: string }) {
+    const [expanded, setExpanded] = useState(false);
+    const [focused, setFocused] = useState(false);
+    
+    if (!text) return null;
+    
+    const needsExpand = text.length > 120;
+
+    return (
+        <View style={{ marginBottom: scale(36) }}>
+            <Text style={s.description} numberOfLines={expanded ? undefined : 2}>
+                {text}
             </Text>
-        </Pressable>
+            {needsExpand && (
+                <TVPressable
+                    focusable
+                    onFocus={() => setFocused(true)}
+                    onBlur={() => setFocused(false)}
+                    onPress={() => setExpanded(!expanded)}
+                    style={[s.expandBtn, focused && s.expandBtnFocused]}
+                >
+                    <Text style={[s.expandBtnText, focused && s.expandBtnTextFocused]}>
+                        {expanded ? 'Ocultar' : 'Seguir leyendo'}
+                    </Text>
+                </TVPressable>
+            )}
+        </View>
     );
 }
 
@@ -343,6 +375,7 @@ export default function FilmDetailScreen() {
                 contentContainerStyle={s.scrollContent}
                 showsVerticalScrollIndicator={false}
             >
+                <TVTopNav />
                 {/* ── HERO SECTION ─────────────────────────────────────────────── */}
                 <View style={s.heroSection}>
                     {/* Genres / Type tag */}
@@ -386,7 +419,7 @@ export default function FilmDetailScreen() {
                     </View>
 
                     {/* Description */}
-                    <Text style={s.description} numberOfLines={4}>{tr.description}</Text>
+                    <ExpandableDescription text={tr.description} />
 
                     {/* ── ACTION BUTTONS ─────────────────────────────────────────── */}
                     <View style={s.actionRow}>
@@ -399,13 +432,13 @@ export default function FilmDetailScreen() {
                             hasTVPreferredFocus
                         />
                         <ActionButton
-                            label={isFavorited ? 'EN MI LISTA' : 'MI LISTA'}
+                            label=""
                             icon={isFavorited ? Check : Plus}
                             onPress={toggleFav}
                             active={isFavorited}
                         />
                         <ActionButton
-                            label={isLiked ? 'TE GUSTA' : 'ME GUSTA'}
+                            label=""
                             icon={ThumbsUp}
                             onPress={toggleLike}
                             active={isLiked}
@@ -551,20 +584,24 @@ const s = StyleSheet.create({
 
     description: {
         fontSize: scale(18), color: 'rgba(255,255,255,0.72)',
-        lineHeight: scale(30), marginBottom: scale(36),
+        lineHeight: scale(26),
         fontWeight: '400',
     },
+    expandBtn: { alignSelf: 'flex-start', marginTop: scale(8), paddingVertical: scale(4), paddingHorizontal: scale(12), borderRadius: scale(8), borderWidth: 2, borderColor: 'transparent' },
+    expandBtnFocused: { backgroundColor: Colors.white, transform: [{ scale: 1.05 }] },
+    expandBtnText: { fontSize: scale(14), fontWeight: '700', color: Colors.accent },
+    expandBtnTextFocused: { color: Colors.black },
 
     // ── Action Buttons ──
     actionRow: { flexDirection: 'row', gap: scale(16), alignItems: 'center' },
 
     actionBtn: {
-        flexDirection: 'row', alignItems: 'center', gap: scale(10),
-        paddingVertical: scale(16), paddingHorizontal: scale(28), borderRadius: scale(14),
-        borderWidth: 2, borderColor: 'transparent',
+        flexDirection: 'row', alignItems: 'center', gap: scale(8),
+        borderRadius: scale(12), borderWidth: 2, borderColor: 'transparent',
     },
     actionBtnPrimary: {
         backgroundColor: Colors.white,
+        paddingVertical: scale(15), paddingHorizontal: scale(26),
     },
     actionBtnPrimaryFocused: {
         backgroundColor: Colors.accent,
@@ -574,15 +611,18 @@ const s = StyleSheet.create({
     actionBtnSecondary: {
         backgroundColor: 'rgba(255,255,255,0.1)',
         borderColor: 'rgba(255,255,255,0.15)',
+        padding: scale(14),
+        borderRadius: scale(30),
     },
     actionBtnSecondaryFocused: {
         backgroundColor: Colors.white,
         borderColor: Colors.white,
-        transform: [{ scale: 1.06 }],
+        transform: [{ scale: 1.1 }],
     },
     actionBtnDisabled: { backgroundColor: 'rgba(255,255,255,0.05)', opacity: 0.4 },
-    actionBtnText: { fontSize: scale(17), fontWeight: '800', color: Colors.white, letterSpacing: 1 },
-    actionBtnTextPrimary: { color: Colors.black },
+    actionBtnText: { fontWeight: '800', letterSpacing: 1 },
+    actionBtnTextPrimary: { color: Colors.black, fontSize: scale(16) },
+    actionBtnTextSecondary: { color: Colors.white, fontSize: scale(13) },
     actionBtnTextFocused: { color: Colors.black },
 
     // ── Sections ──

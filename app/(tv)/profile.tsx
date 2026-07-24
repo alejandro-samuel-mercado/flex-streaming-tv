@@ -8,6 +8,8 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { Colors } from '../../theme/colors';
 import { useAuth } from '../../context/AuthContext';
 import TVModal from '../../components/tv/TVModal';
+import TVCosmicBackground from '../../components/tv/TVCosmicBackground';
+import TVTopNav from '../../components/tv/TVTopNav';
 import { fetchApi } from '../../lib/api-client';
 import { API_ROUTES, resolveImageUrl } from '../../lib/api-routes';
 import { scale } from '../../lib/scale';
@@ -161,7 +163,7 @@ export default function ProfileScreen() {
         try {
             const res = await fetchApi(`${API_ROUTES.HISTORY.LIST}?limit=15`);
             if (res.success && res.data) {
-                setHistory(res.data.data || res.data.items || res.data || []);
+                setHistory((res.data.data || res.data.items || res.data || []).slice(0, 12));
             }
         } catch (e) {
             console.error(e);
@@ -226,8 +228,9 @@ export default function ProfileScreen() {
 
     if (!user) {
         return (
-            <View style={[s.container, { backgroundColor: '#050814' }]}>
-
+            <View style={[s.container, { backgroundColor: 'transparent' }]}>
+                <TVCosmicBackground />
+                <TVTopNav />
                 <View style={s.contentWrapper}>
                     <View style={s.leftCol}>
                         <Text style={s.mainTitle}>
@@ -275,8 +278,9 @@ export default function ProfileScreen() {
     }
 
     return (
-        <View style={[s.container, { backgroundColor: '#050814' }]}>
-
+        <View style={[s.container, { backgroundColor: 'transparent' }]}>
+            <TVCosmicBackground />
+            <TVTopNav />
             <View style={s.contentWrapper}>
                 {/* Left Side: Profile Identity & Subscription */}
                 <View style={s.leftCol}>
@@ -459,7 +463,7 @@ export default function ProfileScreen() {
 const s = StyleSheet.create({
     container: {
         flex: 1,
-        backgroundColor: '#050B18',
+        backgroundColor: 'transparent',
     },
     glowCircle: {
         position: 'absolute',

@@ -12,6 +12,7 @@ import { TV } from '../../theme/tv';
 import { fetchApi } from '../../lib/api-client';
 import { API_ROUTES, API_ORIGIN } from '../../lib/api-routes';
 import { scale } from '../../lib/scale';
+import TVModal from './TVModal';
 
 // Human-readable language labels (ISO 639-1/2 → Spanish)
 const LANG_LABELS: Record<string, string> = {
@@ -78,6 +79,30 @@ const safeFindNodeHandle = (componentOrHandle: any) => {
         return null;
     }
 };
+
+function ModalButton({ onPress, title, isDestructive = false, hasTVPreferredFocus = false }: any) {
+    const [focused, setFocused] = useState(false);
+    return (
+        <Pressable
+            focusable
+            hasTVPreferredFocus={hasTVPreferredFocus}
+            onFocus={() => setFocused(true)}
+            onBlur={() => setFocused(false)}
+            onPress={onPress}
+            style={[
+                isDestructive ? s.modalBtnDestructive : s.modalBtn,
+                focused && (isDestructive ? s.modalBtnDestructiveFocused : s.modalBtnFocused)
+            ]}
+        >
+            <Text style={[
+                isDestructive ? s.modalBtnDestructiveText : s.modalBtnText,
+                focused && (isDestructive ? s.modalBtnDestructiveTextFocused : s.modalBtnTextFocused)
+            ]}>
+                {title}
+            </Text>
+        </Pressable>
+    );
+}
 
 interface TVPlayerProps {
     content: any;
@@ -330,6 +355,7 @@ export default function TVPlayer({ content, currentEpisode, streamData, videoUrl
 
     // Menus
     const [activeMenu, setActiveMenu] = useState<'episodes' | 'subs' | 'audio' | null>(null);
+    const [showExitConfirm, setShowExitConfirm] = useState(false);
     const [selectedSub, setSelectedSub] = useState<string | number>('off');
     const [selectedAudio, setSelectedAudio] = useState<string | number>('auto');
     const [detectedAudioTracks, setDetectedAudioTracks] = useState<any[]>([]);
@@ -684,17 +710,28 @@ export default function TVPlayer({ content, currentEpisode, streamData, videoUrl
     // Back button handling
     useEffect(() => {
         const backAction = () => {
-            if (activeMenu) {
-                setActiveMenu(null);
-                showOSD();
+            if (showExitConfirm) {
+                setShowExitConfirm(false);
                 return true;
             }
-            router.back();
+            if (activeMenu) {
+                setActiveMenu(null);
+                // Cierra los menús laterales (audio, capítulos)
+                return true;
+            }
+            if (osdVisibleRef.current) {
+                hideOSD();
+                // Cierra la interfaz principal (barra de progreso) sin preguntar
+                return true;
+            }
+            
+            // Si no hay nada en pantalla, pregunta si quiere salir
+            setShowExitConfirm(true);
             return true;
         };
         const backHandler = BackHandler.addEventListener('hardwareBackPress', backAction);
         return () => backHandler.remove();
-    }, [activeMenu, router, showOSD, hideOSD, osdOpacity]);
+    }, [activeMenu, router, showExitConfirm, hideOSD]);
 
     // Refs to sync player handler state without re-creating the event listener constantly
     const activeMenuRef = useRef(activeMenu);
@@ -1216,6 +1253,27 @@ export default function TVPlayer({ content, currentEpisode, streamData, videoUrl
                     </View>
                 </View>
             )}
+
+            {/* Exit Confirmation Modal */}
+            <TVModal visible={showExitConfirm} onClose={() => setShowExitConfirm(false)}>
+                <View style={s.modalContainer}>
+                    <Text style={s.modalTitle}>¿Salir del reproductor?</Text>
+                    <Text style={s.modalSubtitle}>¿Estás seguro de que deseas detener la reproducción y salir?</Text>
+                    
+                    <View style={s.modalActions}>
+                        <ModalButton
+                            title="CONTINUAR VIENDO"
+                            hasTVPreferredFocus
+                            onPress={() => setShowExitConfirm(false)}
+                        />
+                        <ModalButton
+                            title="SÍ, SALIR"
+                            isDestructive
+                            onPress={() => router.back()}
+                        />
+                    </View>
+                </View>
+            </TVModal>
         </View>
     );
 }
@@ -1244,7 +1302,7 @@ const s = StyleSheet.create({
     skipText: { fontSize: scale(12), color: Colors.white, fontWeight: '700', marginTop: scale(2) },
     skipTextFocused: { color: Colors.black },
 
-    menuBtn: { flexDirection: 'row', alignItems: 'center', gap: scale(10), paddingHorizontal: scale(20), paddingVertical: scale(12), borderRadius: scale(12), backgroundColor: 'rgba(255,255,255,0.1)', borderWidth: 2, borderColor: 'transparent' },
+    menuBtn: { flexDirection: 'row', alignItems: 'center', gap: scale(8), padding: scale(12), borderRadius: scale(12), backgroundColor: 'rgba(255,255,255,0.1)', borderWidth: 2, borderColor: 'transparent' },
     menuBtnFocused: { backgroundColor: Colors.white },
     menuBtnText: { fontSize: scale(16), fontWeight: '700', color: Colors.white },
     menuBtnTextFocused: { color: Colors.black },
@@ -1281,4 +1339,79 @@ const s = StyleSheet.create({
     itemFocusedWrapper: { backgroundColor: Colors.white, transform: [{ scale: 1.02 }] },
     trackText: { fontSize: scale(18), fontWeight: '600', color: Colors.white },
     trackTextFocused: { color: Colors.black },
+
+    // Modal Confirm Styles
+    modalContainer: {
+        backgroundColor: 'rgba(5, 8, 15, 0.95)',
+        padding: scale(36),
+        borderRadius: scale(24),
+        alignItems: 'center',
+        maxWidth: scale(450),
+        borderWidth: 2,
+        borderColor: 'rgba(255, 255, 255, 0.15)',
+        overflow: 'hidden',
+    },
+    modalTitle: {
+        fontSize: scale(24),
+        fontWeight: '900',
+        color: '#FFFFFF',
+        marginBottom: scale(10),
+    },
+    modalSubtitle: {
+        fontSize: scale(14),
+        color: '#9CA3AF',
+        textAlign: 'center',
+        marginBottom: scale(24),
+        lineHeight: scale(20),
+    },
+    modalActions: {
+        flexDirection: 'row',
+        gap: scale(14),
+    },
+    modalBtn: {
+        backgroundColor: 'rgba(255, 255, 255, 0.08)',
+        paddingHorizontal: scale(24),
+        paddingVertical: scale(10),
+        borderRadius: scale(10),
+        borderWidth: 3,
+        borderColor: 'transparent',
+    },
+    modalBtnFocused: {
+        backgroundColor: '#FFFFFF',
+        borderColor: '#FFFFFF',
+        borderWidth: 3,
+        transform: [{ scale: 1.08 }],
+        elevation: 10,
+    },
+    modalBtnText: {
+        fontSize: scale(14),
+        fontWeight: '800',
+        color: '#D1D5DB',
+    },
+    modalBtnTextFocused: {
+        color: '#000000',
+    },
+    modalBtnDestructive: {
+        backgroundColor: 'rgba(239,68,68,0.08)',
+        paddingHorizontal: scale(24),
+        paddingVertical: scale(10),
+        borderRadius: scale(10),
+        borderWidth: 3,
+        borderColor: 'transparent',
+    },
+    modalBtnDestructiveFocused: {
+        backgroundColor: '#EF4444',
+        borderColor: '#FFFFFF',
+        borderWidth: 3,
+        transform: [{ scale: 1.08 }],
+        elevation: 10,
+    },
+    modalBtnDestructiveText: {
+        fontSize: scale(14),
+        fontWeight: '800',
+        color: '#EF4444',
+    },
+    modalBtnDestructiveTextFocused: {
+        color: '#FFFFFF',
+    },
 });

@@ -4,6 +4,7 @@ import {
 } from 'react-native';
 import { History, Play, Trash2 } from 'lucide-react-native';
 import { useRouter } from 'expo-router';
+import TVTopNav from '../../components/tv/TVTopNav';
 // react-native-reanimated imports removed for TV stability
 import TVCosmicBackground from '../../components/tv/TVCosmicBackground';
 import { Image } from 'expo-image';
@@ -13,7 +14,6 @@ import { fetchApi } from '../../lib/api-client';
 import { API_ROUTES, resolveImageUrl } from '../../lib/api-routes';
 import { useAuth } from '../../context/AuthContext';
 import { scale } from '../../lib/scale';
-import { useDoubleBackExit } from '../../hooks/useDoubleBackExit';
 import TVModal from '../../components/tv/TVModal';
 
 // ─── Modal Button Component ──────────────────────────────────────────────────
@@ -123,7 +123,6 @@ export default function HistoryScreen() {
     const { user } = useAuth();
     const router = useRouter();
     
-    useDoubleBackExit();
     const [data, setData] = useState<any[]>([]);
     const [loading, setLoading] = useState(true);
     const [idToRemove, setIdToRemove] = useState<string | null>(null);
@@ -173,6 +172,7 @@ export default function HistoryScreen() {
         return (
             <View style={s.root}>
                 <TVCosmicBackground />
+                <TVTopNav />
                 <View style={s.center}>
                     <History size={scale(64)} color="rgba(255,255,255,0.15)" />
                     <Text style={s.emptyTitle}>Inicia sesión</Text>
@@ -185,6 +185,7 @@ export default function HistoryScreen() {
     return (
         <View style={s.root}>
             <TVCosmicBackground />
+            <TVTopNav />
 
             <View style={s.container}>
                 {/* Header */}
@@ -259,7 +260,7 @@ export default function HistoryScreen() {
 }
 
 const s = StyleSheet.create({
-    root: { flex: 1, backgroundColor: Colors.bg },
+    root: { flex: 1, backgroundColor: 'transparent' },
     container: { flex: 1, paddingTop: scale(110) },
     header: {
         flexDirection: 'row',

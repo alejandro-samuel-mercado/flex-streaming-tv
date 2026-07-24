@@ -8,6 +8,7 @@ import { AuthProvider } from '../context/AuthContext';
 import { Colors } from '../theme/colors';
 import { checkForUpdate, UpdateInfo } from '../lib/update-checker';
 import { UpdateModal } from '../components/ui/UpdateModal';
+import GlobalExitModal from '../components/tv/GlobalExitModal';
 
 export default function RootLayout() {
   const [updateInfo, setUpdateInfo] = useState<UpdateInfo | null>(null);
@@ -52,6 +53,9 @@ export default function RootLayout() {
               onDismiss={() => setUpdateInfo(null)}
             />
           )}
+
+          {/* Global TV Exit Modal */}
+          <GlobalExitModal />
         </AuthProvider>
       </SafeAreaProvider>
     </GestureHandlerRootView>

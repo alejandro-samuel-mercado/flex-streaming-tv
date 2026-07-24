@@ -1,21 +1,23 @@
-import React, { useState, useEffect, useRef, useCallback, memo } from 'react';
-import { View, Text, StyleSheet, Dimensions, Pressable } from 'react-native';
 import { Image } from 'expo-image';
-import { Play, Plus, Star, Clock } from 'lucide-react-native';
-import { Colors } from '../../theme/colors';
-import { TV } from '../../theme/tv';
+import { useRouter } from 'expo-router';
+import { Clock, Play, Plus, Star } from 'lucide-react-native';
+import React, { memo, useEffect, useState } from 'react';
+import { Dimensions, FlatList, Pressable, StyleSheet, Text, View } from 'react-native';
+import Animated, { useAnimatedStyle, useSharedValue, withSpring, withTiming, Easing } from 'react-native-reanimated';
 import { resolveImageUrl } from '../../lib/api-routes';
 import { scale } from '../../lib/scale';
-import { useRouter } from 'expo-router';
+import { Colors } from '../../theme/colors';
+import TVPlatformRow from './TVPlatformRow';
+import { useRef } from 'react';
 
 const { width: SW, height: SH } = Dimensions.get('window');
-const BANNER_HEIGHT = SH * 0.72;
 
 interface Slide {
     id: string;
     title: string;
     description?: string;
     backdropUrl?: string;
+    posterUrl?: string;
     rating?: number;
     year?: number;
     ageRating?: string;
@@ -28,7 +30,9 @@ interface Slide {
 interface TVHeroBannerProps {
     slides: Slide[];
     hasTVPreferredFocus?: boolean;
-    sectionLabel?: string; // e.g. "PELÍCULAS", "ANIME"
+    sectionLabel?: string;
+    hideThumbnails?: boolean;
+    hidePlatforms?: boolean;
 }
 
 // ─── Play Button ──────────────────────────────────────────────────────────────
@@ -50,9 +54,9 @@ function PlayButton({ item, onPress }: { item: Slide; onPress: () => void }) {
         >
             <View style={[{ flexDirection: 'row', alignItems: 'center', gap: scale(10) }, focused && { transform: [{ scale: 1.05 }] }]}>
                 {isUpcoming ? (
-                    <Clock size={scale(18)} color={focused ? Colors.white : Colors.black} />
+                    <Clock size={scale(17)} color={focused ? Colors.white : Colors.black} />
                 ) : (
-                    <Play size={scale(18)} color={focused ? Colors.white : Colors.black} fill={focused ? Colors.white : Colors.black} />
+                    <Play size={scale(17)} color={focused ? Colors.white : Colors.black} fill={focused ? Colors.white : Colors.black} />
                 )}
                 <Text style={[s.playBtnText, focused && s.playBtnTextFocused]}>
                     {isUpcoming ? 'Próximamente' : 'Reproducir'}
@@ -84,25 +88,94 @@ function AddButton({ onPress }: { onPress: () => void }) {
     );
 }
 
-// ─── Main Component ───────────────────────────────────────────────────────────
-function TVHeroBannerInner({ slides, sectionLabel }: TVHeroBannerProps) {
-    const router = useRouter();
-    const [currentIndex, setCurrentIndex] = useState(0);
-    const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
-
-    const startAutoRotate = useCallback(() => {
-        if (timerRef.current) clearInterval(timerRef.current);
-        if (slides.length <= 1) return;
-        timerRef.current = setInterval(() => {
-            setCurrentIndex((prev) => (prev + 1) % slides.length);
-        }, 9000);
-    }, [slides.length]);
+// ─── Thumbnail Card ───────────────────────────────────────────────────────────
+function ThumbnailCard({ 
+    item, 
+    isActive, 
+    onFocus, 
+    onPress 
+}: { 
+    item: Slide; 
+    isActive: boolean; 
+    onFocus: () => void; 
+    onPress: () => void; 
+}) {
+    const scaleAnim = useSharedValue(1);
+    const translateYAnim = useSharedValue(0);
 
     useEffect(() => {
-        setCurrentIndex(0);
-        startAutoRotate();
-        return () => { if (timerRef.current) clearInterval(timerRef.current); };
-    }, [startAutoRotate, slides]);
+        if (isActive) {
+            scaleAnim.value = withTiming(1.15, { duration: 300, easing: Easing.out(Easing.cubic) });
+            translateYAnim.value = withTiming(scale(10), { duration: 300, easing: Easing.out(Easing.cubic) });
+        } else {
+            scaleAnim.value = withTiming(1, { duration: 300, easing: Easing.out(Easing.cubic) });
+            translateYAnim.value = withTiming(0, { duration: 300, easing: Easing.out(Easing.cubic) });
+        }
+    }, [isActive]);
+
+    const animStyle = useAnimatedStyle(() => ({
+        transform: [
+            { scale: scaleAnim.value },
+            { translateY: translateYAnim.value }
+        ]
+    }));
+
+    return (
+        <Pressable
+            focusable
+            onFocus={onFocus}
+            onPress={onPress}
+            style={s.thumbWrapper}
+        >
+            <Animated.View style={[s.thumbContainer, animStyle, isActive && s.thumbActive]}>
+                <Image
+                    source={resolveImageUrl(item.posterUrl || item.backdropUrl)}
+                    style={StyleSheet.absoluteFillObject}
+                    contentFit="cover"
+                />
+                {!isActive && <View style={s.thumbOverlay} />}
+            </Animated.View>
+        </Pressable>
+    );
+}
+
+
+// ─── Main Component ───────────────────────────────────────────────────────────
+function TVHeroBannerInner({ slides, sectionLabel, hideThumbnails, hidePlatforms }: TVHeroBannerProps) {
+    const router = useRouter();
+    const [currentIndex, setCurrentIndex] = useState(0);
+    const flatListRef = useRef<FlatList>(null);
+    const isInteracting = useRef(false);
+
+    // Auto-advance logic
+    useEffect(() => {
+        if (!slides || slides.length === 0) return;
+        
+        const interval = setInterval(() => {
+            if (!isInteracting.current) {
+                setCurrentIndex(prev => {
+                    const next = (prev + 1) % slides.length;
+                    flatListRef.current?.scrollToIndex({ index: next, animated: true, viewPosition: 0.5 });
+                    return next;
+                });
+            }
+        }, 15000); // 15 seconds
+
+        return () => clearInterval(interval);
+    }, [slides]);
+
+    // Heuristic to perfectly balance long titles into two even lines
+    const getBalancedTitle = (title: string) => {
+        if (!title || title.length < 24) return title;
+        const mid = Math.floor(title.length / 2);
+        const before = title.lastIndexOf(' ', mid);
+        const after = title.indexOf(' ', mid + 1);
+        
+        if (before === -1 && after === -1) return title;
+        
+        const splitIndex = (before === -1 || (after !== -1 && (after - mid) < (mid - before))) ? after : before;
+        return title.substring(0, splitIndex) + '\n' + title.substring(splitIndex + 1);
+    };
 
     if (!slides.length) return null;
     const item = slides[currentIndex];
@@ -112,7 +185,7 @@ function TVHeroBannerInner({ slides, sectionLabel }: TVHeroBannerProps) {
     };
 
     const handleAdd = () => {
-        // Placeholder – add to favorites
+        // Placeholder
     };
 
     return (
@@ -131,15 +204,14 @@ function TVHeroBannerInner({ slides, sectionLabel }: TVHeroBannerProps) {
                 />
             </View>
 
-            {/* Fast translucent overlay to replace heavy LinearGradients */}
+            {/* Fast translucent overlay */}
             <View style={[StyleSheet.absoluteFill, { backgroundColor: 'rgba(10, 17, 40, 0.65)' }]} />
 
-            {/* Content: bottom-left aligned */}
+            {/* Main Content */}
             <View style={s.content}>
-
-
-
-                <Text style={s.title} numberOfLines={2}>{item.title}</Text>
+                <Text style={s.title} numberOfLines={2}>
+                    {getBalancedTitle(item.title)}
+                </Text>
 
                 {/* Metadata row */}
                 <View style={s.metaRow}>
@@ -165,26 +237,55 @@ function TVHeroBannerInner({ slides, sectionLabel }: TVHeroBannerProps) {
                     )}
                 </View>
 
-                {/* Description */}
-                {!!item.description && (
-                    <Text style={s.descText} numberOfLines={3}>{item.description}</Text>
-                )}
-
                 {/* Action Buttons */}
                 <View style={s.actionsRow}>
                     <PlayButton item={item} onPress={handlePlay} />
                     <AddButton onPress={handleAdd} />
                 </View>
-
-                {/* Dot pagination */}
-                {slides.length > 1 && (
-                    <View style={s.dotsRow}>
-                        {slides.map((_, i) => (
-                            <View key={i} style={[s.dot, i === currentIndex && s.dotActive]} />
-                        ))}
-                    </View>
-                )}
             </View>
+
+            {/* Thumbnail Navigation Row */}
+            {!hideThumbnails && (
+                <View style={s.thumbsSection} onTouchStart={() => isInteracting.current = true} onTouchEnd={() => isInteracting.current = false}>
+                    <FlatList
+                        ref={flatListRef}
+                        data={slides}
+                        horizontal
+                        showsHorizontalScrollIndicator={false}
+                        keyExtractor={(it) => it.id}
+                        contentContainerStyle={s.thumbsListContainer}
+                        onScrollToIndexFailed={(info) => {
+                            setTimeout(() => {
+                                flatListRef.current?.scrollToIndex({ index: info.index, animated: true });
+                            }, 500);
+                        }}
+                        renderItem={({ item: slide, index }) => (
+                            <ThumbnailCard
+                                item={slide}
+                                isActive={index === currentIndex}
+                                onFocus={() => {
+                                    isInteracting.current = true;
+                                    setCurrentIndex(index);
+                                    flatListRef.current?.scrollToIndex({ index, animated: true, viewPosition: 0.5 });
+                                    // Resume auto-play after interaction stops
+                                    setTimeout(() => { isInteracting.current = false; }, 4000);
+                                }}
+                                onPress={() => {
+                                    setCurrentIndex(index);
+                                    handlePlay();
+                                }}
+                            />
+                        )}
+                    />
+                </View>
+            )}
+
+            {/* Platforms Row */}
+            {!hidePlatforms && (
+                <View style={s.platformsSection}>
+                    <TVPlatformRow title="Plataformas" />
+                </View>
+            )}
         </View>
     );
 }
@@ -201,30 +302,24 @@ const s = StyleSheet.create({
     },
     content: {
         position: 'absolute',
-        bottom: scale(180),
+        bottom: scale(240), // Adjusted to have more separation from the top edge
         left: scale(56),
         right: '38%',
-    },
-    sectionLabel: {
-        fontSize: scale(12),
-        fontWeight: '800',
-        color: 'rgba(255,255,255,0.6)',
-        letterSpacing: 2.5,
-        marginBottom: scale(12),
-        textTransform: 'uppercase',
+        maxWidth: scale(700), // Doesn't take so much width
     },
     title: {
-        fontSize: scale(44),
+        fontSize: scale(40),
         fontWeight: '900',
         color: '#FFFFFF',
         letterSpacing: -0.5,
         lineHeight: scale(66),
         marginBottom: scale(14),
+        textTransform: 'uppercase',
     },
     metaRow: {
         flexDirection: 'row',
         alignItems: 'center',
-        marginBottom: scale(14),
+        marginBottom: scale(28), // Replaced desc padding
         gap: scale(8),
     },
     metaText: {
@@ -251,14 +346,7 @@ const s = StyleSheet.create({
         fontWeight: '800',
         color: '#FFFFFF',
     },
-    descText: {
-        fontSize: scale(16),
-        fontWeight: '400',
-        color: 'rgba(255,255,255,0.80)',
-        lineHeight: scale(24),
-        marginBottom: scale(28),
-    },
-
+    
     // Action buttons
     actionsRow: {
         flexDirection: 'row',
@@ -271,15 +359,15 @@ const s = StyleSheet.create({
         alignItems: 'center',
         gap: scale(10),
         backgroundColor: '#FFFFFF',
-        paddingHorizontal: scale(28),
-        paddingVertical: scale(14),
+        paddingHorizontal: scale(26),
+        paddingVertical: scale(13),
         borderRadius: scale(10),
     },
     playBtnFocused: {
         backgroundColor: '#0097A7', // Celeste oscuro
     },
     playBtnText: {
-        fontSize: scale(17),
+        fontSize: scale(16),
         fontWeight: '800',
         color: '#000000',
     },
@@ -301,22 +389,53 @@ const s = StyleSheet.create({
         borderColor: Colors.white,
     },
 
-    // Pagination dots
-    dotsRow: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        gap: scale(6),
+    // Thumbnails
+    thumbsSection: {
+        position: 'absolute',
+        bottom: scale(110), // Moved up to make room for platforms
+        left: 0,
+        right: 0,
+  
+        height: scale(100), // enough for 75 + scaled size
     },
-    dot: {
-        width: scale(6),
-        height: scale(6),
-        borderRadius: scale(3),
-        backgroundColor: 'rgba(255,255,255,0.25)',
+    thumbsListContainer: {
+            paddingVertical:50,
+        paddingHorizontal: scale(56),
+        gap: 0,
+        alignItems: 'flex-end',
     },
-    dotActive: {
-        width: scale(22),
-        height: scale(6),
-        borderRadius: scale(3),
-        backgroundColor: '#FFFFFF',
+    thumbWrapper: {
+        padding: scale(8),
+        justifyContent: 'flex-end',
+    },
+    thumbContainer: {
+        width: scale(70),
+        height: scale(70), // Square aspect ratio, smaller
+        borderRadius: scale(12),
+        overflow: 'hidden',
+        borderWidth: 2,
+        borderColor: 'rgba(255,255,255,0.1)',
+        backgroundColor: '#000',
+    },
+    thumbActive: {
+        borderColor: '#00E5FF',
+        shadowColor: '#00E5FF',
+        shadowOffset: { width: 0, height: 10 },
+        shadowOpacity: 0.6,
+        shadowRadius: 15,
+        elevation: 10,
+    },
+    thumbOverlay: {
+        ...StyleSheet.absoluteFillObject,
+        backgroundColor: 'rgba(0,0,0,0.5)',
+    },
+    platformsSection: {
+        position: 'absolute',
+      
+        
+        bottom: 0,
+        left: 0,
+        right: 0,
+        height: scale(110),
     },
 });

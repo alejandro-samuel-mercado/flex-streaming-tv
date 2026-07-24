@@ -1,39 +1,23 @@
-import React, { useEffect, useRef } from 'react';
-import { View, StyleSheet, BackHandler, ToastAndroid } from 'react-native';
-import { Stack, useRouter, usePathname } from 'expo-router';
-import TVTopNav from '../../components/tv/TVTopNav';
+import React from 'react';
+import { View, StyleSheet, ActivityIndicator } from 'react-native';
+import { Stack, Redirect } from 'expo-router';
 import { Colors } from '../../theme/colors';
+import { useAuth } from '../../context/AuthContext';
 
 export default function TVLayout() {
-  const router = useRouter();
-  const pathname = usePathname();
-  const backPressCount = useRef(0);
+  const { user, loading } = useAuth();
 
-  useEffect(() => {
-    const backAction = () => {
-      // Si el enrutador puede retroceder internamente (en un stack), déjalo actuar.
-      if (router.canGoBack()) {
-        return false;
-      }
+  if (loading) {
+    return (
+      <View style={[s.root, { justifyContent: 'center', alignItems: 'center' }]}>
+        <ActivityIndicator size="large" color={Colors.accent} />
+      </View>
+    );
+  }
 
-      // Si estamos en la raíz (ej: /home o /explore) y no hay historial de navegación:
-      if (backPressCount.current === 0) {
-        backPressCount.current = 1;
-        ToastAndroid.show('Presiona Atrás nuevamente para salir de PeliPlus', ToastAndroid.SHORT);
-        setTimeout(() => {
-          backPressCount.current = 0;
-        }, 2000);
-        return true; // Interceptar el botón
-      }
-
-      // Si presionó por segunda vez en menos de 2 segundos:
-      BackHandler.exitApp();
-      return true;
-    };
-
-    const backHandler = BackHandler.addEventListener('hardwareBackPress', backAction);
-    return () => backHandler.remove();
-  }, [router]);
+  if (!user) {
+    return <Redirect href="/(auth)/login" />;
+  }
 
   return (
     <View style={s.root}>
@@ -57,6 +41,7 @@ export default function TVLayout() {
               contentStyle: { backgroundColor: 'transparent' },
             }}
           />
+          <Stack.Screen name="my-nuba" />
           <Stack.Screen name="history" />
           <Stack.Screen name="profile" />
           <Stack.Screen name="film/[id]" />
@@ -65,7 +50,6 @@ export default function TVLayout() {
       </View>
 
       {/* Top Nav overlay */}
-      {!!pathname && !pathname.startsWith('/watch') && <TVTopNav />}
     </View>
   );
 }
