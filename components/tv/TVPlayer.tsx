@@ -1,6 +1,6 @@
 import { LinearGradient } from 'expo-linear-gradient';
 import { useRouter } from 'expo-router';
-import { AlertCircle, Check, Languages, List, MessageSquare, Pause, Play, RefreshCw, RotateCcw, RotateCw, SkipBack, SkipForward } from 'lucide-react-native';
+import { AlertCircle, Check, ChevronDown, ChevronRight, Languages, List, MessageSquare, Pause, Play, RefreshCw, RotateCcw, RotateCw, SkipBack, SkipForward } from 'lucide-react-native';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ActivityIndicator, BackHandler, FlatList, Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import Animated, { runOnJS, useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated';
@@ -379,6 +379,28 @@ export default function TVPlayer({ content, currentEpisode, streamData, videoUrl
         if (!content?.seasons) return [];
         return content.seasons.flatMap((s: any) => (s.episodes || []).map((e: any) => ({ ...e, seasonNumber: s.number })));
     }, [content]);
+
+    const seasonsWithEpisodes = useMemo(() => {
+        if (!content?.seasons) return [];
+        return content.seasons.map((s: any) => ({
+            ...s,
+            episodes: (s.episodes || []).map((e: any) => ({ ...e, seasonNumber: s.number }))
+        }));
+    }, [content]);
+
+    const [expandedSeasons, setExpandedSeasons] = useState<Record<number, boolean>>({});
+
+    useEffect(() => {
+        if (activeMenu === 'episodes') {
+            const currentEpObj = allEpisodes.find((e: any) => e.id === episodeId);
+            const sNum = currentEpObj?.seasonNumber || content?.seasons?.[0]?.number || 1;
+            setExpandedSeasons(prev => ({ ...prev, [sNum]: true }));
+        }
+    }, [activeMenu, allEpisodes, episodeId, content]);
+
+    const toggleSeason = useCallback((sNum: number) => {
+        setExpandedSeasons(prev => ({ ...prev, [sNum]: !prev[sNum] }));
+    }, []);
 
     const currentIdx = useMemo(() => {
         if (!currentEpisode) return -1;
@@ -790,13 +812,13 @@ export default function TVPlayer({ content, currentEpisode, streamData, videoUrl
 
 
 
-    // When a sidebar menu opens, move focus to its first item
+    // When a sidebar menu opens, move focus to its first item or current episode
     useEffect(() => {
-        if (activeMenu && firstSidebarItemRef.current) {
+        if (activeMenu) {
             // Delay must be long enough for the sidebar to fully mount and ref to be assigned
             const timer = setTimeout(() => {
                 firstSidebarItemRef.current?.focus?.();
-            }, 250);
+            }, 300);
             return () => clearTimeout(timer);
         }
     }, [activeMenu]);
@@ -1193,33 +1215,79 @@ export default function TVPlayer({ content, currentEpisode, streamData, videoUrl
 
                         <TVFocusGuide destinations={[]} style={{ flex: 1 }}>
                             {activeMenu === 'episodes' && (
-                                <FlatList
-                                    data={allEpisodes}
-                                    keyExtractor={(item) => item.id}
-                                    contentContainerStyle={{ padding: scale(24), gap: scale(16) }}
-                                    renderItem={({ item: ep, index: epIdx }) => (
-                                        <TVSidebarItem
-                                            ref={episodeId === ep.id ? firstSidebarItemRef : undefined}
-                                            hasTVPreferredFocus={episodeId === ep.id}
-                                            onPress={() => { setActiveMenu(null); router.replace(`/(tv)/watch/${contentId}?episodeId=${ep.id}` as any); }}
-                                            style={[s.epItem, episodeId === ep.id && s.epItemActive]}
-                                        >
-                                            {(focused: boolean) => (
-                                                <>
-                                                    <View style={[s.epNum, focused && s.epNumFocused, episodeId === ep.id && s.epNumActive]}>
-                                                        <Text style={[s.epNumText, focused && s.epNumTextFocused]}>{ep.number ?? ''}</Text>
+                                <ScrollView contentContainerStyle={{ padding: scale(24), gap: scale(20) }}>
+                                    {seasonsWithEpisodes.map((se: any, sIdx: number) => {
+                                        const isExpanded = !!expandedSeasons[se.number];
+                                        const isCurrentSeason = se.episodes.some((e: any) => e.id === episodeId);
+                                        return (
+                                            <View key={se.id || sIdx} style={{ gap: scale(12) }}>
+                                                {/* Season Header */}
+                                                <TVSidebarItem
+                                                    ref={(!episodeId && sIdx === 0) ? firstSidebarItemRef : undefined}
+                                                    onPress={() => toggleSeason(se.number)}
+                                                    style={[s.seasonHeader, isCurrentSeason && s.seasonHeaderCurrent]}
+                                                >
+                                                    {(focused: boolean) => (
+                                                        <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', width: '100%' }}>
+                                                            <View style={{ flexDirection: 'row', alignItems: 'center', gap: scale(12) }}>
+                                                                {isExpanded ? (
+                                                                    <ChevronDown size={scale(20)} color={focused ? Colors.black : Colors.white} />
+                                                                ) : (
+                                                                    <ChevronRight size={scale(20)} color={focused ? Colors.black : Colors.white} />
+                                                                )}
+                                                                <Text style={[s.seasonTitle, focused && s.seasonTitleFocused]}>
+                                                                    Temporada {se.number}
+                                                                </Text>
+                                                            </View>
+                                                            <Text style={[s.seasonCount, focused && s.seasonCountFocused]}>
+                                                                {se.episodes.length} ep.
+                                                            </Text>
+                                                        </View>
+                                                    )}
+                                                </TVSidebarItem>
+
+                                                {/* Expanded Episodes with Indentation */}
+                                                {isExpanded && (
+                                                    <View style={s.episodesContainer}>
+                                                        {se.episodes.map((ep: any, epIdx: number) => {
+                                                            const isCurrentEp = episodeId === ep.id;
+                                                            return (
+                                                                <TVSidebarItem
+                                                                    key={ep.id || epIdx}
+                                                                    ref={isCurrentEp ? firstSidebarItemRef : undefined}
+                                                                    hasTVPreferredFocus={isCurrentEp}
+                                                                    onPress={() => { setActiveMenu(null); router.replace(`/(tv)/watch/${contentId}?episodeId=${ep.id}` as any); }}
+                                                                    style={[s.epItem, isCurrentEp && s.epItemActive]}
+                                                                >
+                                                                    {(focused: boolean) => (
+                                                                        <>
+                                                                            <View style={[s.epNum, focused && s.epNumFocused, isCurrentEp && s.epNumActive]}>
+                                                                                <Text style={[s.epNumText, focused && s.epNumTextFocused]}>{ep.number ?? ''}</Text>
+                                                                            </View>
+                                                                            <View style={{ flex: 1 }}>
+                                                                                <Text style={[s.epName, focused && s.epNameFocused, isCurrentEp && s.epNameActive]} numberOfLines={1}>
+                                                                                    {ep.translations?.[0]?.title || `Episodio ${ep.number ?? ''}`}
+                                                                                </Text>
+                                                                                <Text style={[s.epMeta, focused && s.epMetaFocused]}>
+                                                                                    {ep.durationSeconds ? `${Math.round(ep.durationSeconds / 60)} min` : `Temporada ${se.number}`}
+                                                                                </Text>
+                                                                            </View>
+                                                                            {isCurrentEp && (
+                                                                                <View style={[s.playingBadge, focused && s.playingBadgeFocused]}>
+                                                                                    <Text style={[s.playingText, focused && s.playingTextFocused]}>Viendo</Text>
+                                                                                </View>
+                                                                            )}
+                                                                        </>
+                                                                    )}
+                                                                </TVSidebarItem>
+                                                            );
+                                                        })}
                                                     </View>
-                                                    <View style={{ flex: 1 }}>
-                                                        <Text style={[s.epName, focused && s.epNameFocused, episodeId === ep.id && s.epNameActive]} numberOfLines={1}>
-                                                            {ep.translations?.[0]?.title || `Episodio ${ep.number ?? ''}`}
-                                                        </Text>
-                                                        <Text style={[s.epMeta, focused && s.epMetaFocused]}>Temporada {ep.seasonNumber ?? ''}</Text>
-                                                    </View>
-                                                </>
-                                            )}
-                                        </TVSidebarItem>
-                                    )}
-                                />
+                                                )}
+                                            </View>
+                                        );
+                                    })}
+                                </ScrollView>
                             )}
 
                             {activeMenu === 'subs' && (
@@ -1355,6 +1423,18 @@ const s = StyleSheet.create({
     sidebar: { width: scale(500), height: '100%', borderLeftWidth: 1, borderLeftColor: 'rgba(255,255,255,0.1)' },
     sidebarHeader: { padding: scale(32), borderBottomWidth: 1, borderBottomColor: 'rgba(255,255,255,0.1)' },
     sidebarTitle: { fontSize: scale(24), fontWeight: '800', color: Colors.white },
+
+    seasonHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: scale(20), paddingVertical: scale(16), borderRadius: scale(12), backgroundColor: 'rgba(255,255,255,0.08)', borderWidth: 2, borderColor: 'transparent' },
+    seasonHeaderCurrent: { borderColor: 'rgba(0, 195, 255, 0.4)', backgroundColor: 'rgba(0, 195, 255, 0.12)' },
+    seasonTitle: { fontSize: scale(20), fontWeight: '800', color: Colors.white },
+    seasonTitleFocused: { color: Colors.black },
+    seasonCount: { fontSize: scale(14), fontWeight: '700', color: 'rgba(255,255,255,0.5)', backgroundColor: 'rgba(0,0,0,0.3)', paddingHorizontal: scale(12), paddingVertical: scale(4), borderRadius: scale(16) },
+    seasonCountFocused: { color: Colors.black, backgroundColor: 'rgba(0,0,0,0.15)' },
+    episodesContainer: { marginLeft: scale(20), paddingLeft: scale(16), borderLeftWidth: 2, borderLeftColor: 'rgba(255,255,255,0.15)', gap: scale(12), marginTop: scale(4) },
+    playingBadge: { backgroundColor: Colors.accent, paddingHorizontal: scale(10), paddingVertical: scale(4), borderRadius: scale(6) },
+    playingBadgeFocused: { backgroundColor: Colors.black },
+    playingText: { fontSize: scale(12), fontWeight: '900', color: Colors.black, textTransform: 'uppercase' },
+    playingTextFocused: { color: Colors.white },
 
     epItem: { flexDirection: 'row', alignItems: 'center', gap: scale(16), padding: scale(16), borderRadius: scale(12), backgroundColor: 'rgba(255,255,255,0.05)', borderWidth: 2, borderColor: 'transparent' },
     epItemFocused: { backgroundColor: Colors.white, transform: [{ scale: 1.02 }] },
