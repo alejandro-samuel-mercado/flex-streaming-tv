@@ -376,7 +376,7 @@ const s = StyleSheet.create({
     },
     content: {
         position: 'absolute',
-        bottom: scale(240), // Adjusted to have more separation from the top edge
+        bottom: scale(275), // Adjusted to sit cleanly above the new large 150x210 thumbnail cards
         left: scale(56),
         right: '38%',
         maxWidth: scale(700), // Doesn't take so much width
@@ -473,45 +473,37 @@ const s = StyleSheet.create({
     // Thumbnails
     thumbsSection: {
         position: 'absolute',
-        bottom: scale(110), // Moved up to make room for platforms
+        bottom: 0, // Sit at the very bottom of the banner
         left: 0,
         right: 0,
-  
-        height: scale(100), // enough for 75 + scaled size
+        height: scale(300), // Ample height (300px) so large cards and scale transforms never clip on top/bottom
+        justifyContent: 'center',
     },
     thumbsListContainer: {
-            paddingVertical:50,
+        paddingVertical: scale(40), // Generous vertical padding inside scroll view for scale transform
         paddingHorizontal: scale(56),
-        gap: 0,
-        alignItems: 'flex-end',
+        gap: scale(14),
+        alignItems: 'center',
     },
     thumbWrapper: {
-        padding: scale(8),
-        justifyContent: 'flex-end',
+        padding: scale(6),
+        justifyContent: 'center',
     },
     thumbContainer: {
-        width: scale(70),
-        height: scale(70), // Square aspect ratio, smaller
-        borderRadius: scale(12),
+        width: scale(150),
+        height: scale(210), // Much larger, beautiful rectangular movie poster dimensions
+        borderRadius: scale(14),
         overflow: 'hidden',
-        borderWidth: 2,
-        borderColor: 'rgba(255,255,255,0.1)',
+        borderWidth: 2.5,
+        borderColor: 'rgba(255,255,255,0.2)',
         backgroundColor: '#000',
     },
     thumbActive: {
         borderColor: '#00E5FF',
+        borderWidth: 3.5,
     },
     thumbOverlay: {
         ...StyleSheet.absoluteFillObject,
         backgroundColor: 'rgba(0,0,0,0.5)',
-    },
-    platformsSection: {
-        position: 'absolute',
-      
-        
-        bottom: 0,
-        left: 0,
-        right: 0,
-        height: scale(110),
     },
 });
