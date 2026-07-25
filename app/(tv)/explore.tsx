@@ -508,63 +508,66 @@ export default function ExploreScreen() {
     const sortLabel = LABEL[sort] || 'Ordenar';
 
     const renderHeader = useCallback(() => (
-        <View style={s.headerContainer}>
-            <TVTopNav />
-
-            {/* Search & Tabs */}
-            <View style={s.searchRow}>
-                <Pressable
-                    focusable
-                    onPress={() => searchInputRef.current?.focus()}
-                    onFocus={() => setSearchFocused(true)}
-                    onBlur={() => setSearchFocused(false)}
-                    style={[
-                        s.searchContainer,
-                        searchFocused && s.searchContainerFocused
-                    ]}
-                >
-                    <Search size={18} color={searchFocused ? Colors.black : Colors.textSecondary} style={{ marginRight: 14 }} />
-                    <TextInput
-                        ref={searchInputRef}
-                        focusable={false}
-                        placeholder="Buscar películas, series..."
-                        placeholderTextColor={searchFocused ? Colors.textSecondary : Colors.textMuted}
-                        style={[s.searchInput, searchFocused && { color: Colors.black }]}
-                        value={searchQuery}
-                        onChangeText={setSearchQuery}
-                        onSubmitEditing={() => setAppliedSearch(searchQuery)}
-                        returnKeyType="search"
-                    />
-                </Pressable>
-
-                <FilterTabButton label={typeLabel!} isActive={activeTab === 'type' || currentType !== ''} onPress={() => setActiveTab(activeTab === 'type' ? null : 'type')} />
-                <FilterTabButton label={sortLabel} isActive={activeTab === 'sort' || sort !== 'recent'} onPress={() => setActiveTab(activeTab === 'sort' ? null : 'sort')} />
-                <FilterTabButton label={genreLabel!} isActive={activeTab === 'genre' || genreId !== ''} onPress={() => setActiveTab(activeTab === 'genre' ? null : 'genre')} />
-                <FilterTabButton label={platformLabel!} isActive={activeTab === 'platform' || platformId !== ''} onPress={() => setActiveTab(activeTab === 'platform' ? null : 'platform')} />
+        <View>
+            <View style={{ marginHorizontal: -DYNAMIC_SIDE_PAD }}>
+                <TVTopNav />
             </View>
+            <View style={s.headerContainer}>
+                {/* Search & Tabs */}
+                <View style={s.searchRow}>
+                    <Pressable
+                        focusable
+                        onPress={() => searchInputRef.current?.focus()}
+                        onFocus={() => setSearchFocused(true)}
+                        onBlur={() => setSearchFocused(false)}
+                        style={[
+                            s.searchContainer,
+                            searchFocused && s.searchContainerFocused
+                        ]}
+                    >
+                        <Search size={18} color={searchFocused ? Colors.black : Colors.textSecondary} style={{ marginRight: 14 }} />
+                        <TextInput
+                            ref={searchInputRef}
+                            focusable={false}
+                            placeholder="Buscar películas, series..."
+                            placeholderTextColor={searchFocused ? Colors.textSecondary : Colors.textMuted}
+                            style={[s.searchInput, searchFocused && { color: Colors.black }]}
+                            value={searchQuery}
+                            onChangeText={setSearchQuery}
+                            onSubmitEditing={() => setAppliedSearch(searchQuery)}
+                            returnKeyType="search"
+                        />
+                    </Pressable>
 
-            {/* Expandable Inline Filter Rows with Reserved Space */}
-            <View style={s.filterArea}>
-                {activeTab === 'type' && (
-                    <View>
-                        <FilterRow title="" data={TYPE_OPTIONS} selectedValue={currentType} onSelect={handleTypeChange} />
-                    </View>
-                )}
-                {activeTab === 'sort' && (
-                    <View>
-                        <FilterRow title="" data={SORT_OPTIONS} selectedValue={sort} onSelect={(val) => { setSort(val); setActiveTab(null); }} />
-                    </View>
-                )}
-                {activeTab === 'genre' && (
-                    <View>
-                        <FilterRow title="" data={genres} selectedValue={genreId} onSelect={(val) => { setGenreId(val); setActiveTab(null); }} />
-                    </View>
-                )}
-                {activeTab === 'platform' && (
-                    <View>
-                        <FilterRow title="" data={platforms} selectedValue={platformId} onSelect={(val) => { setPlatformId(val); setActiveTab(null); }} />
-                    </View>
-                )}
+                    <FilterTabButton label={typeLabel!} isActive={activeTab === 'type' || currentType !== ''} onPress={() => setActiveTab(activeTab === 'type' ? null : 'type')} />
+                    <FilterTabButton label={sortLabel} isActive={activeTab === 'sort' || sort !== 'recent'} onPress={() => setActiveTab(activeTab === 'sort' ? null : 'sort')} />
+                    <FilterTabButton label={genreLabel!} isActive={activeTab === 'genre' || genreId !== ''} onPress={() => setActiveTab(activeTab === 'genre' ? null : 'genre')} />
+                    <FilterTabButton label={platformLabel!} isActive={activeTab === 'platform' || platformId !== ''} onPress={() => setActiveTab(activeTab === 'platform' ? null : 'platform')} />
+                </View>
+
+                {/* Expandable Inline Filter Rows with Reserved Space */}
+                <View style={s.filterArea}>
+                    {activeTab === 'type' && (
+                        <View>
+                            <FilterRow title="" data={TYPE_OPTIONS} selectedValue={currentType} onSelect={handleTypeChange} />
+                        </View>
+                    )}
+                    {activeTab === 'sort' && (
+                        <View>
+                            <FilterRow title="" data={SORT_OPTIONS} selectedValue={sort} onSelect={(val) => { setSort(val); setActiveTab(null); }} />
+                        </View>
+                    )}
+                    {activeTab === 'genre' && (
+                        <View>
+                            <FilterRow title="" data={genres} selectedValue={genreId} onSelect={(val) => { setGenreId(val); setActiveTab(null); }} />
+                        </View>
+                    )}
+                    {activeTab === 'platform' && (
+                        <View>
+                            <FilterRow title="" data={platforms} selectedValue={platformId} onSelect={(val) => { setPlatformId(val); setActiveTab(null); }} />
+                        </View>
+                    )}
+                </View>
             </View>
         </View>
     ), [TypeIcon, pageTitle, total, sort, genreId, platformId, appliedSearch, searchQuery, genres, platforms, activeTab, sortLabel, genreLabel, platformLabel, typeLabel, currentType]);
@@ -600,7 +603,7 @@ export default function ExploreScreen() {
                     {catHeroSlides.length > 0 && (
                         <TVHeroBanner slides={catHeroSlides} sectionLabel={sectionLabel} hideThumbnails={true} hidePlatforms={true} />
                     )}
-                    <View style={{ marginTop: catHeroSlides.length > 0 ? -scale(230) : scale(32), zIndex: 10, paddingBottom: scale(60) }}>
+                    <View style={{ marginTop: catHeroSlides.length > 0 ? -scale(100) : scale(32), zIndex: 10, paddingBottom: scale(60) }}>
                         {/* "Todos" row */}
                         {catAllItems.length > 0 && (
                             <TVFilmRow
