@@ -1,15 +1,13 @@
 import { Image } from 'expo-image';
+import { LinearGradient } from 'expo-linear-gradient';
 import { useRouter } from 'expo-router';
 import { Clock, Play, Plus, Star } from 'lucide-react-native';
-import React, { memo, useEffect, useState } from 'react';
-import { Dimensions, FlatList, Pressable, StyleSheet, Text, View } from 'react-native';
-import Animated, { useAnimatedStyle, useSharedValue, withSpring, withTiming, Easing } from 'react-native-reanimated';
+import React, { memo, useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { Dimensions, findNodeHandle, FlatList, Platform, Pressable, StyleSheet, Text, View } from 'react-native';
+import Animated, { Easing, useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated';
 import { resolveImageUrl } from '../../lib/api-routes';
 import { scale } from '../../lib/scale';
 import { Colors } from '../../theme/colors';
-import TVPlatformRow from './TVPlatformRow';
-import { useRef } from 'react';
-import { LinearGradient } from 'expo-linear-gradient';
 
 const { width: SW, height: SH } = Dimensions.get('window');
 
@@ -37,7 +35,7 @@ interface TVHeroBannerProps {
 }
 
 // ─── Play Button ──────────────────────────────────────────────────────────────
-const PlayButton = React.forwardRef<View, { item: Slide; onPress: () => void }>(({ item, onPress }, ref) => {
+const PlayButton = React.forwardRef<View, { item: Slide; onPress: () => void; nextFocusDown?: number | null }>(({ item, onPress, nextFocusDown }, ref) => {
     const [focused, setFocused] = useState(false);
     const isUpcoming = !!item.isUpcoming;
 
@@ -46,6 +44,7 @@ const PlayButton = React.forwardRef<View, { item: Slide; onPress: () => void }>(
             ref={ref as any}
             focusable
             hasTVPreferredFocus
+            nextFocusDown={nextFocusDown ?? undefined}
             onFocus={() => setFocused(true)}
             onBlur={() => setFocused(false)}
             onPress={isUpcoming ? undefined : onPress}
@@ -69,12 +68,14 @@ const PlayButton = React.forwardRef<View, { item: Slide; onPress: () => void }>(
 });
 
 // ─── Add Button ───────────────────────────────────────────────────────────────
-function AddButton({ onPress }: { onPress: () => void }) {
+const AddButton = React.forwardRef<View, { onPress: () => void; nextFocusDown?: number | null }>(({ onPress, nextFocusDown }, ref) => {
     const [focused, setFocused] = useState(false);
 
     return (
         <Pressable
+            ref={ref as any}
             focusable
+            nextFocusDown={nextFocusDown ?? undefined}
             onFocus={() => setFocused(true)}
             onBlur={() => setFocused(false)}
             onPress={onPress}
@@ -88,27 +89,27 @@ function AddButton({ onPress }: { onPress: () => void }) {
             </View>
         </Pressable>
     );
-}
+});
 
 // ─── Thumbnail Card ───────────────────────────────────────────────────────────
-function ThumbnailCard({ 
-    item, 
-    isActive, 
-    onFocus, 
-    onPress 
-}: { 
+const ThumbnailCard = React.forwardRef<View, { 
     item: Slide; 
     isActive: boolean; 
     onFocus: () => void; 
     onPress: () => void; 
-}) {
+}>(({ 
+    item, 
+    isActive, 
+    onFocus, 
+    onPress 
+}, ref) => {
     const scaleAnim = useSharedValue(1);
     const translateYAnim = useSharedValue(0);
 
     useEffect(() => {
         if (isActive) {
-            scaleAnim.value = withTiming(1.15, { duration: 300, easing: Easing.out(Easing.cubic) });
-            translateYAnim.value = withTiming(scale(10), { duration: 300, easing: Easing.out(Easing.cubic) });
+            scaleAnim.value = withTiming(1.12, { duration: 300, easing: Easing.out(Easing.cubic) });
+            translateYAnim.value = withTiming(-scale(4), { duration: 300, easing: Easing.out(Easing.cubic) });
         } else {
             scaleAnim.value = withTiming(1, { duration: 300, easing: Easing.out(Easing.cubic) });
             translateYAnim.value = withTiming(0, { duration: 300, easing: Easing.out(Easing.cubic) });
@@ -124,6 +125,7 @@ function ThumbnailCard({
 
     return (
         <Pressable
+            ref={ref as any}
             focusable
             onFocus={onFocus}
             onPress={onPress}
@@ -139,7 +141,7 @@ function ThumbnailCard({
             </Animated.View>
         </Pressable>
     );
-}
+});
 
 
 // ─── Main Component ───────────────────────────────────────────────────────────
@@ -150,8 +152,27 @@ function TVHeroBannerInner({ slides, sectionLabel, hideThumbnails, hidePlatforms
     const flatListRef = useRef<FlatList>(null);
     const isInteracting = useRef(false);
     const playBtnRef = useRef<any>(null);
+    const addBtnRef = useRef<any>(null);
+    const firstThumbRef = useRef<any>(null);
+    const [firstThumbId, setFirstThumbId] = useState<number | null>(null);
 
-    // Auto-advance logic
+    // Bind nextFocusDown of hero buttons to first thumbnail card
+    useLayoutEffect(() => {
+        if (Platform.OS === 'web') return;
+        const timer = setTimeout(() => {
+            if (firstThumbRef.current) {
+                const id = findNodeHandle(firstThumbRef.current);
+                if (id) {
+                    if (id !== firstThumbId) setFirstThumbId(id);
+                    if (playBtnRef.current) playBtnRef.current.setNativeProps?.({ nextFocusDown: id });
+                    if (addBtnRef.current) addBtnRef.current.setNativeProps?.({ nextFocusDown: id });
+                }
+            }
+        }, 250);
+        return () => clearTimeout(timer);
+    }, [slides, hideThumbnails]);
+
+    // Auto-advance logic (5 seconds)
     useEffect(() => {
         if (!slides || slides.length === 0) return;
         
@@ -164,7 +185,7 @@ function TVHeroBannerInner({ slides, sectionLabel, hideThumbnails, hidePlatforms
                     return next;
                 });
             }
-        }, 15000); // 15 seconds
+        }, 5000); // 5 seconds
 
         return () => clearInterval(interval);
     }, [slides]);
@@ -272,8 +293,8 @@ function TVHeroBannerInner({ slides, sectionLabel, hideThumbnails, hidePlatforms
                 )}
 
                 <View style={s.actionsRow}>
-                    <PlayButton ref={playBtnRef} item={item} onPress={handlePlay} />
-                    <AddButton onPress={handleAdd} />
+                    <PlayButton ref={playBtnRef} item={item} onPress={handlePlay} nextFocusDown={firstThumbId} />
+                    <AddButton ref={addBtnRef} onPress={handleAdd} nextFocusDown={firstThumbId} />
                 </View>
             </View>
 
@@ -294,12 +315,20 @@ function TVHeroBannerInner({ slides, sectionLabel, hideThumbnails, hidePlatforms
                         }}
                         renderItem={({ item: slide, index }) => (
                             <ThumbnailCard
+                                ref={index === 0 ? firstThumbRef : undefined}
                                 item={slide}
                                 isActive={index === focusedIndex}
                                 onFocus={() => {
                                     isInteracting.current = true;
                                     setFocusedIndex(index);
-                                    flatListRef.current?.scrollToIndex({ index, animated: true, viewPosition: 0.5 });
+                                    if (index === 0) {
+                                        flatListRef.current?.scrollToOffset({ offset: 0, animated: true });
+                                        setTimeout(() => {
+                                            flatListRef.current?.scrollToOffset({ offset: 0, animated: true });
+                                        }, 100);
+                                    } else {
+                                        flatListRef.current?.scrollToIndex({ index, animated: true, viewPosition: 0.5 });
+                                    }
                                     // Resume auto-play after interaction stops
                                     setTimeout(() => { isInteracting.current = false; }, 4000);
                                 }}
@@ -311,13 +340,6 @@ function TVHeroBannerInner({ slides, sectionLabel, hideThumbnails, hidePlatforms
                             />
                         )}
                     />
-                </View>
-            )}
-
-            {/* Platforms Row */}
-            {!hidePlatforms && (
-                <View style={s.platformsSection}>
-                    <TVPlatformRow title="Plataformas" />
                 </View>
             )}
                 </View>

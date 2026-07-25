@@ -6,7 +6,6 @@ import { Colors } from '../../theme/colors';
 import TVHeroBanner from '../../components/tv/TVHeroBanner';
 import TVCosmicBackground from '../../components/tv/TVCosmicBackground';
 import TVFilmRow from '../../components/tv/TVFilmRow';
-import TVPlatformRow from '../../components/tv/TVPlatformRow';
 import { TVHomeSkeleton } from '../../components/tv/TVSkeleton';
 import { fetchApi } from '../../lib/api-client';
 import { API_ROUTES } from '../../lib/api-routes';
