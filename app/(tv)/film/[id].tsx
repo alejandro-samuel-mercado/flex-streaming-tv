@@ -568,7 +568,7 @@ const s = StyleSheet.create({
     genrePillText: { fontSize: scale(13), fontWeight: '700', color: Colors.accent, letterSpacing: 0.5 },
 
     heroTitle: {
-        fontSize: scale(60), fontWeight: '900', color: Colors.white,
+        fontSize: scale(48), fontWeight: '900', color: Colors.white,
         lineHeight: scale(66), marginBottom: scale(20), letterSpacing: -1,
     },
 
@@ -583,7 +583,7 @@ const s = StyleSheet.create({
     ratingText: { fontSize: scale(17), fontWeight: '800', color: '#F59E0B' },
 
     description: {
-        fontSize: scale(18), color: 'rgba(255,255,255,0.72)',
+        fontSize: scale(16), color: 'rgba(255,255,255,0.72)',
         lineHeight: scale(26),
         fontWeight: '400',
     },
@@ -647,7 +647,7 @@ const s = StyleSheet.create({
 
     // ── Episode Cards ──
     epCard: {
-        width: scale(320), borderRadius: scale(16),
+        width: scale(260), borderRadius: scale(16),
         backgroundColor: 'rgba(255,255,255,0.08)',
         borderWidth: 2, borderColor: 'transparent',
         overflow: 'hidden',
@@ -657,25 +657,25 @@ const s = StyleSheet.create({
         backgroundColor: 'rgba(255,255,255,0.16)',
         transform: [{ scale: 1.04 }],
     },
-    epThumbWrap: { width: '100%', height: scale(170), position: 'relative' },
-    epThumb: { width: '100%', height: scale(170) },
+    epThumbWrap: { width: '100%', height: scale(145), position: 'relative' },
+    epThumb: { width: '100%', height: scale(145) },
     epThumbFallback: { backgroundColor: 'rgba(255,255,255,0.06)', justifyContent: 'center', alignItems: 'center' },
     epNumBadge: {
-        position: 'absolute', top: scale(12), left: scale(12),
-        width: scale(32), height: scale(32), borderRadius: scale(8),
+        position: 'absolute', top: scale(10), left: scale(10),
+        width: scale(28), height: scale(28), borderRadius: scale(6),
         backgroundColor: 'rgba(0,0,0,0.7)',
         justifyContent: 'center', alignItems: 'center',
     },
-    epNumBadgeText: { fontSize: scale(15), fontWeight: '900', color: Colors.white },
+    epNumBadgeText: { fontSize: scale(14), fontWeight: '900', color: Colors.white },
     epPlayOverlay: {
         ...StyleSheet.absoluteFillObject,
         justifyContent: 'center', alignItems: 'center',
         backgroundColor: 'rgba(0,0,0,0.45)',
     },
-    epInfo: { padding: scale(16) },
-    epTitle: { fontSize: scale(16), fontWeight: '800', color: Colors.white, marginBottom: scale(6) },
-    epDesc: { fontSize: scale(13), color: 'rgba(255,255,255,0.72)', lineHeight: scale(19) },
-    epDuration: { fontSize: scale(13), fontWeight: '600', color: 'rgba(255,255,255,0.5)', marginTop: scale(8) },
+    epInfo: { padding: scale(14) },
+    epTitle: { fontSize: scale(15), fontWeight: '800', color: Colors.white, marginBottom: scale(4) },
+    epDesc: { fontSize: scale(12), color: 'rgba(255,255,255,0.72)', lineHeight: scale(17) },
+    epDuration: { fontSize: scale(12), fontWeight: '600', color: 'rgba(255,255,255,0.5)', marginTop: scale(6) },
 
     // ── Cast ──
     actorCard: { alignItems: 'center', width: scale(90) },
