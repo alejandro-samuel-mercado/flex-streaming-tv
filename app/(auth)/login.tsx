@@ -20,7 +20,7 @@ import TVCosmicBackground from '../../components/tv/TVCosmicBackground';
 function TVInputField({
     value, onChange, secureText, icon: Icon,
     hasTVPreferredFocus, returnKeyType, onSubmitEditing,
-    placeholder
+    placeholder, inputRef: propRef
 }: {
     value: string;
     onChange: (v: string) => void;
@@ -30,16 +30,14 @@ function TVInputField({
     returnKeyType?: any;
     onSubmitEditing?: () => void;
     placeholder?: string;
+    inputRef?: React.RefObject<TextInput>;
 }) {
     const [focused, setFocused] = useState(false);
     const [showPass, setShowPass] = useState(false);
-    const inputRef = useRef<TextInput>(null);
+    const internalRef = useRef<TextInput>(null);
+    const inputRef = propRef || internalRef;
 
     const scaleAnim = useSharedValue(1);
-
-    const handlePress = () => {
-        inputRef.current?.focus();
-    };
 
     const animStyle = useAnimatedStyle(() => ({
         transform: [{ scale: withTiming(scaleAnim.value, { duration: 150 }) }],
@@ -52,20 +50,17 @@ function TVInputField({
                     <Icon size={scale(22)} color={focused ? '#00E5FF' : '#6B7280'} />
                 </View>
 
-                <Pressable
-                    focusable
-                    hasTVPreferredFocus={hasTVPreferredFocus}
-                    onFocus={() => { setFocused(true); scaleAnim.value = 1.02; }}
-                    onBlur={() => { setFocused(false); scaleAnim.value = 1; }}
-                    onPress={handlePress}
-                    style={[s.inputBox, focused && s.inputBoxFocused]}
-                >
+                <View style={[s.inputBox, focused && s.inputBoxFocused]}>
                     <TextInput
                         ref={inputRef}
+                        focusable={true}
+                        hasTVPreferredFocus={hasTVPreferredFocus}
+                        onFocus={() => { setFocused(true); scaleAnim.value = 1.02; }}
+                        onBlur={() => { setFocused(false); scaleAnim.value = 1; }}
                         value={value}
                         onChangeText={onChange}
                         secureTextEntry={secureText && !showPass}
-                        style={[s.textInput, focused && s.textInputFocused]}
+                        style={[s.textInput, { flex: 1, height: '100%' }, focused && s.textInputFocused]}
                         autoCapitalize="none"
                         autoCorrect={false}
                         returnKeyType={returnKeyType || 'next'}
@@ -74,7 +69,7 @@ function TVInputField({
                         placeholder={placeholder}
                         placeholderTextColor="#4B5563"
                     />
-                </Pressable>
+                </View>
 
                 {secureText && (
                     <Pressable
@@ -103,15 +98,14 @@ function SubmitButton({ onPress, loading }: { onPress: () => void; loading: bool
     }));
 
     return (
-        <Animated.View style={[s.submitWrapper, animStyle]}>
-            <Pressable
-                focusable
-                onFocus={() => { setFocused(true); scaleAnim.value = 1.04; }}
-                onBlur={() => { setFocused(false); scaleAnim.value = 1; }}
-                onPress={onPress}
-                disabled={loading}
-                style={[s.submitBtn, focused && s.submitBtnFocused]}
-            >
+        <Pressable
+            focusable
+            onFocus={() => { setFocused(true); scaleAnim.value = 1.04; }}
+            onBlur={() => { setFocused(false); scaleAnim.value = 1; }}
+            onPress={onPress}
+            style={s.submitWrapper}
+        >
+            <Animated.View style={[s.submitBtn, focused && s.submitBtnFocused, animStyle]}>
                 <LinearGradient
                     colors={focused ? ['#4DEDFF', '#00E5FF'] : ['#00E5FF', '#0099AA']}
                     start={{ x: 0, y: 0 }}
@@ -123,8 +117,8 @@ function SubmitButton({ onPress, loading }: { onPress: () => void; loading: bool
                         : <Text style={s.submitText}>INICIAR SESIÓN</Text>
                     }
                 </LinearGradient>
-            </Pressable>
-        </Animated.View>
+            </Animated.View>
+        </Pressable>
     );
 }
 
@@ -214,6 +208,7 @@ export default function LoginScreen() {
                                 placeholder="Contraseña"
                                 returnKeyType="done"
                                 onSubmitEditing={handleLogin}
+                                inputRef={passwordRef}
                             />
                             {!!errorMsg && (
                                 <View style={s.errorContainer}>

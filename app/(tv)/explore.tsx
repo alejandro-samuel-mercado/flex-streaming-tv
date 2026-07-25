@@ -515,11 +515,7 @@ export default function ExploreScreen() {
             <View style={s.headerContainer}>
                 {/* Search & Tabs */}
                 <View style={s.searchRow}>
-                    <Pressable
-                        focusable
-                        onPress={() => searchInputRef.current?.focus()}
-                        onFocus={() => setSearchFocused(true)}
-                        onBlur={() => setSearchFocused(false)}
+                    <View
                         style={[
                             s.searchContainer,
                             searchFocused && s.searchContainerFocused
@@ -528,16 +524,18 @@ export default function ExploreScreen() {
                         <Search size={18} color={searchFocused ? Colors.black : Colors.textSecondary} style={{ marginRight: 14 }} />
                         <TextInput
                             ref={searchInputRef}
-                            focusable={false}
+                            focusable={true}
+                            onFocus={() => setSearchFocused(true)}
+                            onBlur={() => setSearchFocused(false)}
                             placeholder="Buscar películas, series..."
                             placeholderTextColor={searchFocused ? Colors.textSecondary : Colors.textMuted}
-                            style={[s.searchInput, searchFocused && { color: Colors.black }]}
+                            style={[s.searchInput, { flex: 1, height: '100%' }, searchFocused && { color: Colors.black }]}
                             value={searchQuery}
                             onChangeText={setSearchQuery}
                             onSubmitEditing={() => setAppliedSearch(searchQuery)}
                             returnKeyType="search"
                         />
-                    </Pressable>
+                    </View>
 
                     <FilterTabButton label={typeLabel!} isActive={activeTab === 'type' || currentType !== ''} onPress={() => setActiveTab(activeTab === 'type' ? null : 'type')} />
                     <FilterTabButton label={sortLabel} isActive={activeTab === 'sort' || sort !== 'recent'} onPress={() => setActiveTab(activeTab === 'sort' ? null : 'sort')} />
