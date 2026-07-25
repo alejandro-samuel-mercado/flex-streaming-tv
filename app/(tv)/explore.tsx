@@ -45,7 +45,7 @@ const ACTUAL_CONTENT_W = (COLUMNS * CARD_W) + ((COLUMNS - 1) * GAP);
 const DYNAMIC_SIDE_PAD = (SW - ACTUAL_CONTENT_W) / 2;
 
 // Removed TVCollageBackground for performance
-const TOP_OFFSET = scale(120);
+const TOP_OFFSET = scale(100);
 
 interface FilterOption { label: string; value: string; }
 
@@ -155,12 +155,18 @@ export default function ExploreScreen() {
     const urlTypeParam = (params.type as string) || '';
     const urlSlug = (params.platform as string) || '';
 
-    // Filters State
     const [currentType, setCurrentType] = useState(urlTypeParam);
 
     useEffect(() => {
         setCurrentType((params.type as string) || '');
     }, [params.type]);
+
+    const handleTypeChange = (val: string) => {
+        setCurrentType(val);
+        setActiveTab(null);
+        setForceFilterGrid(true);
+        router.setParams({ type: val });
+    };
     const [sort, setSort] = useState('recent');
     const [genreId, setGenreId] = useState('');
     const [platformId, setPlatformId] = useState('');
@@ -206,8 +212,8 @@ export default function ExploreScreen() {
 
     // Whether user has applied filters (switching to filter-grid view)
     const hasActiveFilters = genreId !== '' || platformId !== '' || sort !== 'recent' || appliedSearch !== '';
-    // Show category view when there's a type and no active filters
-    const showCategoryView = !!currentType && !hasActiveFilters && !forceFilterGrid;
+    // Show category view when there's a type and no active filters (except for KIDS/KDRAMA which map to genres)
+    const showCategoryView = !!currentType && currentType !== 'KIDS' && currentType !== 'KDRAMA' && !hasActiveFilters && !forceFilterGrid;
 
     // ── Auto-Search while typing (Debounced) ──────────────────────────────────
     useEffect(() => {
@@ -224,13 +230,18 @@ export default function ExploreScreen() {
     useEffect(() => {
         const pending = consumePendingExploreFilters();
         if (pending) {
-            if (pending.type !== undefined) setCurrentType(pending.type);
-            if (pending.genreId !== undefined) setGenreId(pending.genreId);
-            if (pending.platformId !== undefined) setPlatformId(pending.platformId);
-            if (pending.sort !== undefined) setSort(pending.sort);
+            const newParams: Record<string, string> = {};
+            if (pending.type !== undefined) { setCurrentType(pending.type); newParams.type = pending.type; }
+            if (pending.genreId !== undefined) { setGenreId(pending.genreId); newParams.genreId = pending.genreId; }
+            if (pending.platformId !== undefined) { setPlatformId(pending.platformId); newParams.platformId = pending.platformId; }
+            if (pending.sort !== undefined) { setSort(pending.sort); newParams.sort = pending.sort; }
 
             // Force the grid view
             setForceFilterGrid(true);
+            
+            if (Object.keys(newParams).length > 0) {
+                router.setParams(newParams);
+            }
         }
     }, []);
 
@@ -384,12 +395,30 @@ export default function ExploreScreen() {
     // ── Build URL ─────────────────────────────────────────────────────────────
     const buildUrl = useCallback((p: number) => {
         const q = new URLSearchParams({ page: `${p}`, limit: '28', sort });
-        if (currentType) q.append('type', currentType);
-        if (genreId) q.append('genreId', genreId);
+        let effectiveType = currentType;
+        let effectiveGenreId = genreId;
+
+        // Fallbacks for types that don't exist directly in the database but have related genres
+        if (currentType === 'KIDS') {
+            effectiveType = '';
+            if (!effectiveGenreId) {
+                const familiaGenre = genres.find(g => g.label.toLowerCase() === 'familia');
+                if (familiaGenre) effectiveGenreId = familiaGenre.value;
+            }
+        } else if (currentType === 'KDRAMA') {
+            effectiveType = '';
+            if (!effectiveGenreId) {
+                const dramaGenre = genres.find(g => g.label.toLowerCase() === 'drama');
+                if (dramaGenre) effectiveGenreId = dramaGenre.value;
+            }
+        }
+
+        if (effectiveType) q.append('type', effectiveType);
+        if (effectiveGenreId) q.append('genreId', effectiveGenreId);
         if (platformId) q.append('platformId', platformId);
         if (appliedSearch) q.append('search', appliedSearch);
         return `${API_ROUTES.CONTENT.LIST}?${q}`;
-    }, [currentType, sort, genreId, platformId, appliedSearch]);
+    }, [currentType, sort, genreId, platformId, appliedSearch, genres]);
 
     // ── Auto-Focus Search Bar ──────────────────────────────────────────────────
     const searchInputRef = useRef<TextInput>(null);
@@ -461,15 +490,7 @@ export default function ExploreScreen() {
 
     const renderHeader = useCallback(() => (
         <View style={s.headerContainer}>
-            {/* Title & Clear */}
-            <View style={s.titleRow}>
-                <TypeIcon size={32} color={Colors.white} />
-                <Text style={s.contentTitle}>{pageTitle}</Text>
-                {total !== null && <Text style={s.totalBadge}>{total} títulos</Text>}
-
-                <View style={{ flex: 1 }} />
-
-            </View>
+         
 
             {/* Search & Tabs */}
             <View style={s.searchRow}>
@@ -483,7 +504,7 @@ export default function ExploreScreen() {
                         searchFocused && s.searchContainerFocused
                     ]}
                 >
-                    <Search size={22} color={searchFocused ? Colors.black : Colors.textSecondary} style={{ marginRight: 14 }} />
+                    <Search size={18} color={searchFocused ? Colors.black : Colors.textSecondary} style={{ marginRight: 14 }} />
                     <TextInput
                         ref={searchInputRef}
                         focusable={false}
@@ -507,7 +528,7 @@ export default function ExploreScreen() {
             <View style={s.filterArea}>
                 {activeTab === 'type' && (
                     <View>
-                        <FilterRow title="" data={TYPE_OPTIONS} selectedValue={currentType} onSelect={(val) => { setCurrentType(val); setActiveTab(null); }} />
+                        <FilterRow title="" data={TYPE_OPTIONS} selectedValue={currentType} onSelect={handleTypeChange} />
                     </View>
                 )}
                 {activeTab === 'sort' && (
@@ -594,6 +615,7 @@ export default function ExploreScreen() {
     return (
         <View style={s.root}>
             <TVCosmicBackground />
+            <TVTopNav />
 
             {/* ═══ MAIN CONTENT (no banner here) ══════════════════════ */}
             <View style={s.content}>
@@ -648,12 +670,12 @@ const s = StyleSheet.create({
         paddingHorizontal: scale(14), paddingVertical: scale(6), borderRadius: scale(12),
     },
 
-    searchRow: { flexDirection: 'row', alignItems: 'center', gap: scale(16), marginBottom: scale(16) },
+    searchRow: { flexDirection: 'row', alignItems: 'center', gap: scale(16), marginBottom: scale(3) },
     searchContainer: {
         width: scale(380), // Fixed width, better proportion for TV
         flexDirection: 'row', alignItems: 'center',
         backgroundColor: 'rgba(255,255,255,0.08)',
-        paddingHorizontal: scale(24), paddingVertical: scale(14),
+        paddingHorizontal: scale(24), paddingVertical: scale(4),
         borderRadius: scale(16), borderWidth: 2, borderColor: 'transparent',
     },
     searchContainerFocused: {
@@ -669,7 +691,7 @@ const s = StyleSheet.create({
     tabBtn: {
         flexDirection: 'row', alignItems: 'center', gap: scale(10),
         backgroundColor: 'rgba(255,255,255,0.05)',
-        paddingHorizontal: scale(22), paddingVertical: scale(14),
+        paddingHorizontal: scale(22), paddingVertical: scale(6),
         borderRadius: scale(16), borderWidth: 2, borderColor: 'transparent',
         maxWidth: scale(250),
     },
@@ -697,7 +719,7 @@ const s = StyleSheet.create({
         textTransform: 'uppercase',
     },
     filterRowList: {
-        paddingBottom: scale(8),
+        paddingBottom: scale(1),
         paddingHorizontal: scale(4),
     },
 
@@ -725,7 +747,7 @@ const s = StyleSheet.create({
 
     content: { flex: 1 },
     grid: { paddingBottom: scale(100) },
-    row: { gap: GAP, marginBottom: GAP },
+    row: { gap: GAP, marginBottom: GAP, marginTop: scale(-30) },
     cardWrap: { marginBottom: GAP },
 
     emptyCenter: { marginTop: scale(80), alignItems: 'center', justifyContent: 'center', gap: scale(16) },

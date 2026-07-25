@@ -34,6 +34,7 @@
       "permissions": []
     },
     "plugins": [
+      "./withTvBanner.js",
       "expo-router",
       "expo-font",
       [

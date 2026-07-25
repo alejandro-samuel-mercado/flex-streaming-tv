@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { View, Text, StyleSheet, TextInput, Pressable, ActivityIndicator, Dimensions } from 'react-native';
+import { View, Text, StyleSheet, TextInput, Pressable, ActivityIndicator, Dimensions, KeyboardAvoidingView, Platform, ScrollView, Keyboard } from 'react-native';
 import { Image } from 'expo-image';
 import { useRouter } from 'expo-router';
 import { useDoubleBackExit } from "../../hooks/useDoubleBackExit";
@@ -140,7 +140,17 @@ export default function LoginScreen() {
     const [errorMsg, setErrorMsg] = useState('');
     const passwordRef = useRef<TextInput>(null);
 
+    const [kbVisible, setKbVisible] = useState(false);
+    useEffect(() => {
+        const showSub = Keyboard.addListener('keyboardDidShow', () => setKbVisible(true));
+        const hideSub = Keyboard.addListener('keyboardDidHide', () => setKbVisible(false));
+        return () => { showSub.remove(); hideSub.remove(); };
+    }, []);
 
+    const kbOffset = -scale(220);
+    const kbAnimStyle = useAnimatedStyle(() => ({
+        transform: [{ translateY: withTiming(kbVisible ? kbOffset : 0, { duration: 300, easing: Easing.out(Easing.ease) }) }]
+    }));
 
     const handleLogin = async () => {
         setErrorMsg('');
@@ -155,7 +165,7 @@ export default function LoginScreen() {
                 body: JSON.stringify({ username: username.trim(), password }),
             });
             if (res.success && res.data?.accessToken) {
-                login(res.data.accessToken, res.data.refreshToken, res.data.user).catch(console.warn);
+                await login(res.data.accessToken, res.data.refreshToken, res.data.user);
                 router.replace('/(tv)/home');
             } else {
                 setErrorMsg(res.message || 'Usuario o contraseña incorrectos.');
@@ -171,9 +181,9 @@ export default function LoginScreen() {
         <View style={s.container}>
             <TVCosmicBackground />
 
-            <View style={s.contentWrapper}>
-                {/* Form Side */}
-                <View style={s.formSide}>
+            <Animated.View style={[s.contentWrapper, { flex: 1 }, kbAnimStyle]}>
+                    {/* Form Side */}
+                    <View style={s.formSide}>
                     {/* Ethereal Glow behind the card */}
                     <View style={s.glowOrb} pointerEvents="none" />
                     <View style={s.glowOrb2} pointerEvents="none" />
@@ -214,7 +224,7 @@ export default function LoginScreen() {
                         </View>
                     </View>
                 </View>
-            </View>
+            </Animated.View>
         </View>
     );
 }

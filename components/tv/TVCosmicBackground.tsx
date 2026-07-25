@@ -6,18 +6,18 @@ import { scale } from '../../lib/scale';
 
 const { width: SW, height: SH } = Dimensions.get('window');
 
-// Generate static sparkle positions once, split into 3 groups
-const SPARKLES_G1 = Array.from({ length: 15 }).map((_, i) => ({
+// Generate static sparkle positions once, split into 3 groups (reduced count for performance)
+const SPARKLES_G1 = Array.from({ length: 4 }).map((_, i) => ({
     id: `g1_${i}`, top: Math.random() * SH, left: Math.random() * SW,
     size: Math.random() * 4 + 4, opacity: Math.random() * 0.6 + 0.4,
     color: Math.random() > 0.5 ? '#FFFFFF' : '#00E5FF'
 }));
-const SPARKLES_G2 = Array.from({ length: 15 }).map((_, i) => ({
+const SPARKLES_G2 = Array.from({ length: 4 }).map((_, i) => ({
     id: `g2_${i}`, top: Math.random() * SH, left: Math.random() * SW,
     size: Math.random() * 4 + 4, opacity: Math.random() * 0.6 + 0.4,
     color: Math.random() > 0.5 ? '#FFFFFF' : '#8A2BE2'
 }));
-const SPARKLES_G3 = Array.from({ length: 15 }).map((_, i) => ({
+const SPARKLES_G3 = Array.from({ length: 4 }).map((_, i) => ({
     id: `g3_${i}`, top: Math.random() * SH, left: Math.random() * SW,
     size: Math.random() * 4 + 4, opacity: Math.random() * 0.6 + 0.4,
     color: '#FFFFFF'
@@ -82,7 +82,7 @@ function TVCosmicBackgroundInner() {
 
 export default memo(TVCosmicBackgroundInner);
 
-// Sparkle subcomponent to keep JSX clean
+// Sparkle subcomponent to keep JSX clean (removed expensive shadows for TV perf)
 const SparkleDot = memo(({ sp }: { sp: any }) => (
     <View
         style={{
@@ -94,10 +94,6 @@ const SparkleDot = memo(({ sp }: { sp: any }) => (
             borderRadius: sp.size / 2,
             backgroundColor: sp.color,
             opacity: sp.opacity,
-            shadowColor: sp.color,
-            shadowOffset: { width: 0, height: 0 },
-            shadowOpacity: 1,
-            shadowRadius: 8,
         }}
     />
 ));

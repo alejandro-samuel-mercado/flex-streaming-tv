@@ -9,6 +9,7 @@ import { scale } from '../../lib/scale';
 import { Colors } from '../../theme/colors';
 import TVPlatformRow from './TVPlatformRow';
 import { useRef } from 'react';
+import { LinearGradient } from 'expo-linear-gradient';
 
 const { width: SW, height: SH } = Dimensions.get('window');
 
@@ -36,12 +37,13 @@ interface TVHeroBannerProps {
 }
 
 // ─── Play Button ──────────────────────────────────────────────────────────────
-function PlayButton({ item, onPress }: { item: Slide; onPress: () => void }) {
+const PlayButton = React.forwardRef<View, { item: Slide; onPress: () => void }>(({ item, onPress }, ref) => {
     const [focused, setFocused] = useState(false);
     const isUpcoming = !!item.isUpcoming;
 
     return (
         <Pressable
+            ref={ref as any}
             focusable
             hasTVPreferredFocus
             onFocus={() => setFocused(true)}
@@ -64,7 +66,7 @@ function PlayButton({ item, onPress }: { item: Slide; onPress: () => void }) {
             </View>
         </Pressable>
     );
-}
+});
 
 // ─── Add Button ───────────────────────────────────────────────────────────────
 function AddButton({ onPress }: { onPress: () => void }) {
@@ -143,9 +145,11 @@ function ThumbnailCard({
 // ─── Main Component ───────────────────────────────────────────────────────────
 function TVHeroBannerInner({ slides, sectionLabel, hideThumbnails, hidePlatforms }: TVHeroBannerProps) {
     const router = useRouter();
-    const [currentIndex, setCurrentIndex] = useState(0);
+    const [focusedIndex, setFocusedIndex] = useState(0);
+    const [activeIndex, setActiveIndex] = useState(0);
     const flatListRef = useRef<FlatList>(null);
     const isInteracting = useRef(false);
+    const playBtnRef = useRef<any>(null);
 
     // Auto-advance logic
     useEffect(() => {
@@ -153,9 +157,10 @@ function TVHeroBannerInner({ slides, sectionLabel, hideThumbnails, hidePlatforms
         
         const interval = setInterval(() => {
             if (!isInteracting.current) {
-                setCurrentIndex(prev => {
+                setFocusedIndex(prev => {
                     const next = (prev + 1) % slides.length;
                     flatListRef.current?.scrollToIndex({ index: next, animated: true, viewPosition: 0.5 });
+                    setActiveIndex(next);
                     return next;
                 });
             }
@@ -163,6 +168,14 @@ function TVHeroBannerInner({ slides, sectionLabel, hideThumbnails, hidePlatforms
 
         return () => clearInterval(interval);
     }, [slides]);
+
+    // Debounce content change for performance
+    useEffect(() => {
+        if (focusedIndex !== activeIndex) {
+            const timeout = setTimeout(() => setActiveIndex(focusedIndex), 300);
+            return () => clearTimeout(timeout);
+        }
+    }, [focusedIndex, activeIndex]);
 
     // Heuristic to perfectly balance long titles into two even lines
     const getBalancedTitle = (title: string) => {
@@ -178,7 +191,7 @@ function TVHeroBannerInner({ slides, sectionLabel, hideThumbnails, hidePlatforms
     };
 
     if (!slides.length) return null;
-    const item = slides[currentIndex];
+    const item = slides[activeIndex];
 
     const handlePlay = () => {
         if (item.id) router.push(`/(tv)/film/${item.id}` as any);
@@ -189,9 +202,11 @@ function TVHeroBannerInner({ slides, sectionLabel, hideThumbnails, hidePlatforms
     };
 
     return (
-        <View style={s.container}>
-            {/* Full-screen backdrop */}
-            <View
+        <View style={s.rootWrapper}>
+            <View style={s.container}>
+                <View style={s.realignWrapper}>
+                    {/* Full-screen backdrop */}
+                    <View
                 key={`bg-${item.id}`}
                 style={StyleSheet.absoluteFill}
             >
@@ -206,6 +221,18 @@ function TVHeroBannerInner({ slides, sectionLabel, hideThumbnails, hidePlatforms
 
             {/* Fast translucent overlay */}
             <View style={[StyleSheet.absoluteFill, { backgroundColor: 'rgba(10, 17, 40, 0.65)' }]} />
+
+            {/* Gradient fade to background at the bottom */}
+            <LinearGradient
+                colors={['transparent', '#02040A']}
+                style={{
+                    position: 'absolute',
+                    bottom: 0,
+                    left: 0,
+                    right: 0,
+                    height: scale(250),
+                }}
+            />
 
             {/* Main Content */}
             <View style={s.content}>
@@ -237,9 +264,15 @@ function TVHeroBannerInner({ slides, sectionLabel, hideThumbnails, hidePlatforms
                     )}
                 </View>
 
-                {/* Action Buttons */}
+                {/* Description */}
+                {!!item.description && (
+                    <Text style={s.description} numberOfLines={2}>
+                        {item.description}
+                    </Text>
+                )}
+
                 <View style={s.actionsRow}>
-                    <PlayButton item={item} onPress={handlePlay} />
+                    <PlayButton ref={playBtnRef} item={item} onPress={handlePlay} />
                     <AddButton onPress={handleAdd} />
                 </View>
             </View>
@@ -262,16 +295,17 @@ function TVHeroBannerInner({ slides, sectionLabel, hideThumbnails, hidePlatforms
                         renderItem={({ item: slide, index }) => (
                             <ThumbnailCard
                                 item={slide}
-                                isActive={index === currentIndex}
+                                isActive={index === focusedIndex}
                                 onFocus={() => {
                                     isInteracting.current = true;
-                                    setCurrentIndex(index);
+                                    setFocusedIndex(index);
                                     flatListRef.current?.scrollToIndex({ index, animated: true, viewPosition: 0.5 });
                                     // Resume auto-play after interaction stops
                                     setTimeout(() => { isInteracting.current = false; }, 4000);
                                 }}
                                 onPress={() => {
-                                    setCurrentIndex(index);
+                                    setFocusedIndex(index);
+                                    setActiveIndex(index);
                                     handlePlay();
                                 }}
                             />
@@ -286,6 +320,8 @@ function TVHeroBannerInner({ slides, sectionLabel, hideThumbnails, hidePlatforms
                     <TVPlatformRow title="Plataformas" />
                 </View>
             )}
+                </View>
+            </View>
         </View>
     );
 }
@@ -294,11 +330,27 @@ const TVHeroBanner = memo(TVHeroBannerInner);
 export default TVHeroBanner;
 
 const s = StyleSheet.create({
-    container: {
+    rootWrapper: {
         width: SW,
         height: SH,
-        position: 'relative',
+    },
+    container: {
+        width: SW * 3,
+        height: SH,
+        position: 'absolute',
+        top: 0,
+        left: -SW,
         backgroundColor: '#0A1128',
+        borderBottomLeftRadius: SW * 3,
+        borderBottomRightRadius: SW * 3,
+        overflow: 'hidden',
+    },
+    realignWrapper: {
+        width: SW,
+        height: SH,
+        position: 'absolute',
+        top: 0,
+        left: SW,
     },
     content: {
         position: 'absolute',
@@ -319,8 +371,15 @@ const s = StyleSheet.create({
     metaRow: {
         flexDirection: 'row',
         alignItems: 'center',
-        marginBottom: scale(28), // Replaced desc padding
+        marginBottom: scale(16), 
         gap: scale(8),
+    },
+    description: {
+        fontSize: scale(15),
+        color: 'rgba(255,255,255,0.85)',
+        lineHeight: scale(22),
+        marginBottom: scale(24),
+        fontWeight: '500',
     },
     metaText: {
         fontSize: scale(14),
@@ -419,11 +478,6 @@ const s = StyleSheet.create({
     },
     thumbActive: {
         borderColor: '#00E5FF',
-        shadowColor: '#00E5FF',
-        shadowOffset: { width: 0, height: 10 },
-        shadowOpacity: 0.6,
-        shadowRadius: 15,
-        elevation: 10,
     },
     thumbOverlay: {
         ...StyleSheet.absoluteFillObject,

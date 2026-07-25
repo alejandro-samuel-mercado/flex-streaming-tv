@@ -89,11 +89,11 @@ function ExpandableDescription({ text }: { text: string }) {
     
     if (!text) return null;
     
-    const needsExpand = text.length > 120;
+    const needsExpand = text.length > 180;
 
     return (
         <View style={{ marginBottom: scale(36) }}>
-            <Text style={s.description} numberOfLines={expanded ? undefined : 2}>
+            <Text style={s.description} numberOfLines={expanded ? undefined : 3}>
                 {text}
             </Text>
             {needsExpand && (
@@ -549,12 +549,12 @@ const s = StyleSheet.create({
     loader: { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#02040A' },
 
     scroll: { flex: 1 },
-    scrollContent: { paddingTop: HERO_PADDING_TOP },
+    scrollContent: { paddingBottom: scale(80) },
 
     // ── Hero ──
     heroSection: {
         paddingHorizontal: SIDE_PADDING,
-        paddingTop: scale(40),
+        paddingTop: HERO_PADDING_TOP + scale(40),
         paddingBottom: scale(48),
         maxWidth: SW * 0.58, // Keep text on the left half so backdrop shows on the right
     },
@@ -604,8 +604,8 @@ const s = StyleSheet.create({
         paddingVertical: scale(15), paddingHorizontal: scale(26),
     },
     actionBtnPrimaryFocused: {
-        backgroundColor: Colors.accent,
-        borderColor: Colors.accent,
+        backgroundColor: '#0097A7',
+        borderColor: '#0097A7',
         transform: [{ scale: 1.06 }],
     },
     actionBtnSecondary: {

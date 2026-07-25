@@ -1,18 +1,19 @@
-import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
-import { View, Text, StyleSheet, Pressable, BackHandler, ActivityIndicator, Platform, FlatList, ScrollView, UIManager } from 'react-native';
-
-const { TVEventHandler } = require('react-native');
-import Video, { VideoRef, SelectedTrackType, TextTrackType } from 'react-native-video';
 import { LinearGradient } from 'expo-linear-gradient';
-import Animated, { useSharedValue, useAnimatedStyle, withTiming, runOnJS } from 'react-native-reanimated';
-import { Play, Pause, RotateCcw, RotateCw, SkipForward, SkipBack, AlertCircle, List, MessageSquare, Languages, X, Check, RefreshCw } from 'lucide-react-native';
 import { useRouter } from 'expo-router';
+import { AlertCircle, Check, Languages, List, MessageSquare, Pause, Play, RefreshCw, RotateCcw, RotateCw, SkipBack, SkipForward } from 'lucide-react-native';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { ActivityIndicator, BackHandler, FlatList, Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import Animated, { runOnJS, useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated';
+import Video, { SelectedTrackType, TextTrackType, VideoRef } from 'react-native-video';
+import { fetchApi } from '../../lib/api-client';
+import { API_ORIGIN, API_ROUTES } from '../../lib/api-routes';
+import { scale } from '../../lib/scale';
+import { parseVTT, SubtitleCue } from '../../lib/vtt-parser';
 import { Colors } from '../../theme/colors';
 import { TV } from '../../theme/tv';
-import { fetchApi } from '../../lib/api-client';
-import { API_ROUTES, API_ORIGIN } from '../../lib/api-routes';
-import { scale } from '../../lib/scale';
 import TVModal from './TVModal';
+
+const { TVEventHandler } = require('react-native');
 
 // Human-readable language labels (ISO 639-1/2 → Spanish)
 const LANG_LABELS: Record<string, string> = {
@@ -48,18 +49,16 @@ const LANG_LABELS: Record<string, string> = {
 };
 
 function getLangLabel(lang?: string, title?: string, name?: string, fallback?: string): string {
-    // If the title is something meaningful (not generic "Track N"), use it
-    if (title && !/^(track|pista|subtitle|audio)\s*\d*$/i.test(title.trim())) {
+    const ignoreRegex = /^(track|pista|subtitle|sub|audio)[_-\s]*\d*$/i;
+    if (title && !ignoreRegex.test(title.trim())) {
         return title;
     }
-    if (name && !/^(track|pista|subtitle|audio)\s*\d*$/i.test(name.trim())) {
+    if (name && !ignoreRegex.test(name.trim())) {
         return name;
     }
-    // Try to resolve from language code
     if (lang) {
         const code = lang.toLowerCase().trim();
         if (LANG_LABELS[code]) return LANG_LABELS[code];
-        // Try first 2 chars
         if (code.length > 2 && LANG_LABELS[code.substring(0, 2)]) return LANG_LABELS[code.substring(0, 2)];
     }
     return fallback || lang || 'Desconocido';
@@ -259,7 +258,8 @@ function ProgressBar({
         handleFocus();
     };
 
-    const pct = durationMs > 0 ? (positionMs / durationMs) * 100 : 0;
+    // Evitar desbordamientos cuando positionMs > 0 pero durationMs sigue siendo 1ms (valor inicial)
+    const pct = durationMs > 1000 ? Math.max(0, Math.min(100, (positionMs / durationMs) * 100)) : 0;
 
     return (
         <View style={{ flexDirection: 'row', alignItems: 'center' }} onLayout={handleLayout}>
@@ -362,6 +362,11 @@ export default function TVPlayer({ content, currentEpisode, streamData, videoUrl
     const [detectedTextTracks, setDetectedTextTracks] = useState<any[]>([]);
     const firstSidebarItemRef = useRef<any>(null);
 
+    // Custom Subtitles Engine
+    const [subtitleCues, setSubtitleCues] = useState<SubtitleCue[]>([]);
+    const subtitleCuesRef = useRef<SubtitleCue[]>([]);
+    const [currentSubtitleText, setCurrentSubtitleText] = useState<string>('');
+
     const [activeVideoUrl, setActiveVideoUrl] = useState(videoUrl);
     useEffect(() => {
         setActiveVideoUrl(videoUrl);
@@ -382,40 +387,97 @@ export default function TVPlayer({ content, currentEpisode, streamData, videoUrl
 
     const subsList = useMemo(() => {
         const dbSubs = streamData?.subtitleTracks || currentEpisode?.videoFiles?.[0]?.subtitleTracks || content?.videoFiles?.[0]?.subtitleTracks || [];
-        const mappedDetected = detectedTextTracks.map((t: any, idx: number) => ({
-            label: getLangLabel(t.language, t.title, t.name, `Subtítulo ${idx + 1}`),
-            language: t.language,
-            title: t.title || t.name,
-            type: t.type,
-            index: t.index !== undefined ? t.index : idx
-        }));
+        
+        let mapped = dbSubs.filter((s: any) => s.url).map((s: any, idx: number) => {
+            const title = s.label || s.name || s.language || `Subtítulo ${idx + 1}`;
+            
+            let absoluteUrl = s.url;
+            if (absoluteUrl && !absoluteUrl.startsWith('http')) {
+                const normalized = absoluteUrl.startsWith('/') ? absoluteUrl : `/${absoluteUrl}`;
+                absoluteUrl = `${API_ORIGIN}${normalized}`;
+            }
 
-        const combined = dbSubs.map((s: any) => ({
-            ...s,
-            label: getLangLabel(s.language, s.label, s.name, s.label),
-        }));
-        mappedDetected.forEach(dt => {
-            if (dt.language && !combined.some((c: any) => c.language === dt.language)) {
-                combined.push(dt);
-            } else if (!dt.language) {
-                combined.push(dt);
+            return {
+                label: getLangLabel(s.language, title, s.name, title),
+                language: s.language || 'es',
+                title: title,
+                isExternal: true,
+                uri: absoluteUrl,
+                id: `title:${title}`
+            };
+        });
+
+        detectedTextTracks.forEach((dt: any, idx: number) => {
+            const matchIndex = mapped.findIndex((ext:any) => ext.title === dt.title && ext.language === dt.language);
+            const dtItem = {
+                label: getLangLabel(dt.language, dt.title, dt.name, `Subtítulo ${idx + 1}`),
+                language: dt.language,
+                title: dt.title || dt.name,
+                type: dt.type,
+                index: dt.index !== undefined ? dt.index : idx,
+                id: `index:${dt.index !== undefined ? dt.index : idx}`
+            };
+
+            if (matchIndex < 0) {
+                mapped.push(dtItem);
             }
         });
-        return combined;
+        
+        return mapped;
     }, [streamData, currentEpisode, content, detectedTextTracks]);
 
     const externalTextTracks = useMemo(() => {
         const dbSubs = streamData?.subtitleTracks || currentEpisode?.videoFiles?.[0]?.subtitleTracks || content?.videoFiles?.[0]?.subtitleTracks || [];
-        return dbSubs.filter((s: any) => s.url).map((s: any) => ({
-            title: s.label || s.name || s.language || 'Subtítulo',
-            language: s.language || 'es',
-            type: TextTrackType.VTT,
-            uri: s.url
-        }));
+        return dbSubs.filter((s: any) => s.url).map((s: any, idx: number) => {
+            const isSrt = s.url.toLowerCase().includes('.srt');
+            const title = s.label || s.name || s.language || `Subtítulo ${idx + 1}`;
+            
+            let absoluteUrl = s.url;
+            if (absoluteUrl && !absoluteUrl.startsWith('http')) {
+                const normalized = absoluteUrl.startsWith('/') ? absoluteUrl : `/${absoluteUrl}`;
+                absoluteUrl = `${API_ORIGIN}${normalized}`;
+            }
+
+            return {
+                title,
+                language: s.language || 'es',
+                type: isSrt ? TextTrackType.SUBRIP : TextTrackType.VTT,
+                uri: absoluteUrl
+            };
+        });
     }, [streamData, currentEpisode, content]);
 
     const hasNext = currentIdx >= 0 && currentIdx < allEpisodes.length - 1;
     const hasPrev = currentIdx > 0;
+
+    // Fetch and parse VTT subtitle file when selectedSub changes
+    useEffect(() => {
+        if (typeof selectedSub === 'string' && selectedSub.startsWith('title:')) {
+            const track = subsList.find((s: any) => s.id === selectedSub);
+            if (track && track.uri) {
+                const fetchSubtitles = async () => {
+                    try {
+                        const response = await fetch(track.uri);
+                        const text = await response.text();
+                        const parsedCues = parseVTT(text);
+                        setSubtitleCues(parsedCues);
+                        subtitleCuesRef.current = parsedCues;
+                        setCurrentSubtitleText('');
+                    } catch (err) {
+                        console.warn('[TVPlayer] Failed to load custom subtitles:', err);
+                        setSubtitleCues([]);
+                        subtitleCuesRef.current = [];
+                    }
+                };
+                fetchSubtitles();
+                return;
+            }
+        }
+        
+        setSubtitleCues([]);
+        subtitleCuesRef.current = [];
+        setCurrentSubtitleText('');
+    }, [selectedSub, subsList]);
 
     const hideOSD = useCallback(() => {
         osdVisibleRef.current = false;
@@ -541,6 +603,15 @@ export default function TVPlayer({ content, currentEpisode, streamData, videoUrl
 
             if (osdVisibleRef.current) {
                 setPositionMillis(pos);
+            }
+
+            // Sync Custom Subtitles
+            if (subtitleCuesRef.current && subtitleCuesRef.current.length > 0) {
+                const posSec = pos / 1000;
+                const activeCue = subtitleCuesRef.current.find(cue => posSec >= cue.start && posSec <= cue.end);
+                setCurrentSubtitleText(activeCue ? activeCue.text : '');
+            } else if (currentSubtitleText !== '') {
+                setCurrentSubtitleText('');
             }
         };
         const onCanPlay = () => setLoading(false);
@@ -670,42 +741,11 @@ export default function TVPlayer({ content, currentEpisode, streamData, videoUrl
     }, [seekToPosition, showOSD]);
 
     const changeAudio = useCallback((value: string | number) => {
-        console.log('[TVPlayer:changeAudio] value=', value, 'type=', typeof value, 'videoUrl=', videoUrl);
+        console.log('[TVPlayer:changeAudio] value=', value, 'type=', typeof value);
         setSelectedAudio(value);
         setActiveMenu(null);
         showOSD();
-
-        if (typeof value === 'number') {
-            setLoading(true);
-            const currentPos = positionMillisRef.current;
-
-            // Force ExoPlayer/HLS.js to reload with the new default audio track
-            let newUrl = videoUrl;
-            if (newUrl.includes('?')) {
-                // If there's an existing audioIndex param, replace it; otherwise append it
-                if (newUrl.includes('audioIndex=')) {
-                    newUrl = newUrl.replace(/([?&])audioIndex=\d+/, `$1audioIndex=${value}`);
-                } else {
-                    newUrl = `${newUrl}&audioIndex=${value}`;
-                }
-            } else {
-                newUrl = `${newUrl}?audioIndex=${value}`;
-            }
-
-            // Add a cache buster parameter to bypass browser/HLS.js memory caches
-            const timestamp = Date.now();
-            if (newUrl.includes('cb=')) {
-                newUrl = newUrl.replace(/([?&])cb=\d+/, `$1cb=${timestamp}`);
-            } else {
-                newUrl = `${newUrl}&cb=${timestamp}`;
-            }
-
-            console.log('[TVPlayer:changeAudio] newUrl=', newUrl);
-            setActiveVideoUrl(newUrl);
-        } else {
-            console.log('[TVPlayer:changeAudio] value is not a number, skipping URL change');
-        }
-    }, [videoUrl, showOSD]);
+    }, [showOSD]);
 
     // Back button handling
     useEffect(() => {
@@ -778,6 +818,15 @@ export default function TVPlayer({ content, currentEpisode, streamData, videoUrl
 
         if (osdVisibleRef.current) {
             setPositionMillis(pos);
+        }
+
+        // Sync Custom Subtitles
+        if (subtitleCuesRef.current && subtitleCuesRef.current.length > 0) {
+            const posSec = pos / 1000;
+            const activeCue = subtitleCuesRef.current.find(cue => posSec >= cue.start && posSec <= cue.end);
+            setCurrentSubtitleText(activeCue ? activeCue.text : '');
+        } else if (currentSubtitleText !== '') {
+            setCurrentSubtitleText('');
         }
     };
 
@@ -859,25 +908,17 @@ export default function TVPlayer({ content, currentEpisode, streamData, videoUrl
 
     const audioList = useMemo(() => {
         const dbAudio = streamData?.audioTracks || currentEpisode?.videoFiles?.[0]?.audioTracks || content?.videoFiles?.[0]?.audioTracks || [];
-        const mappedDetected = detectedAudioTracks.map((t: any, idx: number) => ({
-            label: getLangLabel(t.language, t.title, t.name, `Audio ${idx + 1}`),
-            language: t.language,
-            index: t.index !== undefined ? t.index : idx,
-            isDefault: t.selected
-        }));
-
-        const combined = dbAudio.map((a: any) => ({
-            ...a,
-            label: getLangLabel(a.language, a.label, a.name, a.label),
-        }));
-        mappedDetected.forEach(da => {
-            if (da.language && !combined.some((c: any) => c.language === da.language)) {
-                combined.push(da);
-            } else if (!da.language) {
-                combined.push(da);
-            }
+        
+        return detectedAudioTracks.map((t: any, idx: number) => {
+            const dbMatch = dbAudio.find((db: any) => db.language === t.language) || dbAudio[idx];
+            const nameFromDb = dbMatch?.label || dbMatch?.name || dbMatch?.language;
+            return {
+                label: getLangLabel(t.language, t.title || nameFromDb, t.name, `Audio ${idx + 1}`),
+                language: t.language,
+                index: t.index !== undefined ? t.index : idx,
+                isDefault: t.selected
+            };
         });
-        return combined;
     }, [streamData, currentEpisode, content, detectedAudioTracks]);
 
     return (
@@ -922,22 +963,25 @@ export default function TVPlayer({ content, currentEpisode, streamData, videoUrl
                             ? { type: SelectedTrackType.SYSTEM }
                             : typeof selectedAudio === 'number'
                                 ? { type: SelectedTrackType.INDEX, value: selectedAudio }
-                                : typeof selectedAudio === 'string' && selectedAudio !== 'auto'
-                                    ? { type: SelectedTrackType.LANGUAGE, value: selectedAudio }
-                                    : { type: SelectedTrackType.SYSTEM }
+                                : typeof selectedAudio === 'string' && selectedAudio.startsWith('LANG:')
+                                    ? { type: SelectedTrackType.LANGUAGE, value: selectedAudio.replace('LANG:', '') }
+                                    : typeof selectedAudio === 'string' && selectedAudio.startsWith('TITLE:')
+                                        ? { type: SelectedTrackType.TITLE, value: selectedAudio.replace('TITLE:', '') }
+                                        : { type: SelectedTrackType.SYSTEM }
                     }
                     selectedTextTrack={
                         selectedSub === 'off'
                             ? { type: SelectedTrackType.DISABLED }
-                            : typeof selectedSub === 'number'
-                                ? { type: SelectedTrackType.INDEX, value: selectedSub }
-                                : typeof selectedSub === 'string' && selectedSub.startsWith('LANG:')
-                                    ? { type: SelectedTrackType.LANGUAGE, value: selectedSub.replace('LANG:', '') }
-                                    : typeof selectedSub === 'string' && selectedSub.startsWith('TITLE:')
-                                        ? { type: SelectedTrackType.TITLE, value: selectedSub.replace('TITLE:', '') }
-                                        : { type: SelectedTrackType.DISABLED }
+                            : typeof selectedSub === 'string' && selectedSub.startsWith('index:')
+                                ? { type: SelectedTrackType.INDEX, value: parseInt(selectedSub.split(':')[1]) }
+                                : { type: SelectedTrackType.DISABLED } // For external (title:), we render them in JS manually!
                     }
                     {...(externalTextTracks.length > 0 ? { textTracks: externalTextTracks } : {})}
+                    subtitleStyle={{
+                        paddingBottom: 250, // Pushes subtitle up to the center of the screen
+                        fontSize: 20,
+                        opacity: 1
+                    }}
                     useTextureView={false}
                     controls={false}
                     playInBackground={false}
@@ -1017,6 +1061,13 @@ export default function TVPlayer({ content, currentEpisode, streamData, videoUrl
                     if (!activeMenu) showOSD();
                 }}
             />
+
+            {/* Custom JS Subtitle Engine Overlay */}
+            {!!currentSubtitleText && (
+                <View style={s.subtitleOverlay} pointerEvents="none">
+                    <Text style={s.subtitleText}>{currentSubtitleText}</Text>
+                </View>
+            )}
 
             {/* OSD (On-Screen Display) */}
             {osdVisible && (
@@ -1187,18 +1238,7 @@ export default function TVPlayer({ content, currentEpisode, streamData, videoUrl
                                         )}
                                     </TVSidebarItem>
                                     {subsList.map((sub: any, i: number) => {
-                                        // Prefer numeric index for maximum ExoPlayer compatibility
-                                        let value: string | number;
-                                        if (sub.index !== undefined && typeof sub.index === 'number') {
-                                            value = sub.index;
-                                        } else if (sub.language) {
-                                            value = `LANG:${sub.language}`;
-                                        } else if (sub.title && typeof sub.title === 'string') {
-                                            value = `TITLE:${sub.title}`;
-                                        } else {
-                                            value = i;
-                                        }
-
+                                        const value = sub.id;
                                         const isSelected = selectedSub === value;
                                         return (
                                             <TVSidebarItem
@@ -1223,19 +1263,14 @@ export default function TVPlayer({ content, currentEpisode, streamData, videoUrl
                             {activeMenu === 'audio' && (
                                 <ScrollView contentContainerStyle={{ padding: scale(24), gap: scale(16) }}>
                                     {audioList.map((aud: any, i: number) => {
-                                        // SIEMPRE usar número para que changeAudio construya ?audioIndex=N
-                                        // Prioridad: aud.index > aud.trackIndex > posición i
-                                        const numericIndex: number =
-                                            typeof aud.index === 'number' ? aud.index :
-                                                typeof aud.trackIndex === 'number' ? aud.trackIndex :
-                                                    i;
-                                        const isSelected = selectedAudio === numericIndex || (selectedAudio === 'auto' && i === 0);
+                                        const value = aud.index !== undefined ? aud.index : i;
+                                        const isSelected = selectedAudio === value || (selectedAudio === 'auto' && aud.isDefault);
                                         return (
                                             <TVSidebarItem
                                                 key={i}
                                                 ref={isSelected ? firstSidebarItemRef : undefined}
                                                 hasTVPreferredFocus={isSelected}
-                                                onPress={() => changeAudio(numericIndex)}
+                                                onPress={() => changeAudio(value)}
                                                 style={s.trackItem}
                                             >
                                                 {(focused: boolean) => (
@@ -1414,4 +1449,8 @@ const s = StyleSheet.create({
     modalBtnDestructiveTextFocused: {
         color: '#FFFFFF',
     },
+    
+    // Custom Subtitle Overlay
+    subtitleOverlay: { position: 'absolute', bottom: scale(80), left: scale(60), right: scale(60), alignItems: 'center', justifyContent: 'flex-end', zIndex: 50 },
+    subtitleText: { color: Colors.white, fontSize: scale(36), fontWeight: '800', textAlign: 'center', textShadowColor: 'rgba(0,0,0,0.9)', textShadowOffset: { width: 2, height: 2 }, textShadowRadius: 4, backgroundColor: 'rgba(0,0,0,0.5)', paddingHorizontal: scale(16), paddingVertical: scale(6), borderRadius: scale(8), overflow: 'hidden' },
 });

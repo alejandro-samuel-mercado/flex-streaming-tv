@@ -1,6 +1,6 @@
 import TVTopNav from "../../components/tv/TVTopNav";
-import React, { useState, useEffect, useCallback } from 'react';
-import { View, Text, StyleSheet, FlatList, ActivityIndicator, Pressable, Dimensions, ScrollView, DeviceEventEmitter } from 'react-native';
+import React, { useState, useEffect, useCallback, useRef, useLayoutEffect, forwardRef } from 'react';
+import { View, Text, StyleSheet, FlatList, ActivityIndicator, Pressable, Dimensions, ScrollView, DeviceEventEmitter, findNodeHandle, Platform } from 'react-native';
 import { useRouter } from 'expo-router';
 import { Image } from 'expo-image';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -60,6 +60,37 @@ export default function MyNubaScreen() {
         loadFavorites();
     }, [loadHistory, loadFavorites]);
 
+    // Refs for focus locking
+    const historyFirstRef = useRef<any>(null);
+    const historyLastRef = useRef<any>(null);
+    const favFirstRef = useRef<any>(null);
+    const favLastRef = useRef<any>(null);
+
+    useLayoutEffect(() => {
+        if (Platform.OS === 'web') return;
+        const timer = setTimeout(() => {
+            // Lock History row
+            if (historyFirstRef.current) {
+                const id = findNodeHandle(historyFirstRef.current);
+                if (id) historyFirstRef.current.setNativeProps?.({ nextFocusLeft: id });
+            }
+            if (historyLastRef.current) {
+                const id = findNodeHandle(historyLastRef.current);
+                if (id) historyLastRef.current.setNativeProps?.({ nextFocusRight: id });
+            }
+            // Lock Favorites row
+            if (favFirstRef.current) {
+                const id = findNodeHandle(favFirstRef.current);
+                if (id) favFirstRef.current.setNativeProps?.({ nextFocusLeft: id });
+            }
+            if (favLastRef.current) {
+                const id = findNodeHandle(favLastRef.current);
+                if (id) favLastRef.current.setNativeProps?.({ nextFocusRight: id });
+            }
+        }, 300); // give it time to render
+        return () => clearTimeout(timer);
+    }, [history, favorites]);
+
     // Handle scroll to hide/show TopNav
     const handleScroll = (event: any) => {
         const offsetY = event.nativeEvent.contentOffset.y;
@@ -104,27 +135,33 @@ export default function MyNubaScreen() {
             >
                 <TVTopNav />
                 {/* ─── Continuar Viendo ─── */}
-                <View style={s.section}>
+                <View style={[s.section, { marginTop: scale(150) }]}>
                     <Text style={s.sectionTitle}>Continuar Viendo</Text>
                     {loadingHistory ? (
                         <ActivityIndicator size="large" color={Colors.accent} style={s.loader} />
                     ) : history.length === 0 ? (
                         <Text style={s.emptyText}>No tienes contenido reciente.</Text>
                     ) : (
-                        <FlatList
-                            data={history}
+                        <ScrollView
                             horizontal
+                            removeClippedSubviews={false}
                             showsHorizontalScrollIndicator={false}
                             contentContainerStyle={s.listContent}
-                            keyExtractor={(it, i) => it.content?.id || it.id || i.toString()}
-                            renderItem={({ item, index }) => (
-                                <HistoryCard 
-                                    item={item} 
-                                    isFirst={index === 0} 
-                                    onPress={() => handlePlay(item)} 
-                                />
-                            )}
-                        />
+                        >
+                            {history.map((item, index) => {
+                                const isFirst = index === 0;
+                                const isLast = index === history.length - 1;
+                                return (
+                                    <HistoryCard 
+                                        key={item.content?.id || item.id || index.toString()}
+                                        ref={isFirst ? historyFirstRef : isLast ? historyLastRef : undefined}
+                                        item={item} 
+                                        isFirst={isFirst} 
+                                        onPress={() => handlePlay(item)} 
+                                    />
+                                );
+                            })}
+                        </ScrollView>
                     )}
                 </View>
 
@@ -136,19 +173,25 @@ export default function MyNubaScreen() {
                     ) : favorites.length === 0 ? (
                         <Text style={s.emptyText}>No has agregado títulos a tu lista.</Text>
                     ) : (
-                        <FlatList
-                            data={favorites}
+                        <ScrollView
                             horizontal
+                            removeClippedSubviews={false}
                             showsHorizontalScrollIndicator={false}
                             contentContainerStyle={s.listContent}
-                            keyExtractor={(it, i) => it.content?.id || it.id || i.toString()}
-                            renderItem={({ item }) => (
-                                <PosterCard 
-                                    item={item} 
-                                    onPress={() => handlePlay(item)} 
-                                />
-                            )}
-                        />
+                        >
+                            {favorites.map((item, index) => {
+                                const isFirst = index === 0;
+                                const isLast = index === favorites.length - 1;
+                                return (
+                                    <PosterCard 
+                                        key={item.content?.id || item.id || index.toString()}
+                                        ref={isFirst ? favFirstRef : isLast ? favLastRef : undefined}
+                                        item={item} 
+                                        onPress={() => handlePlay(item)} 
+                                    />
+                                );
+                            })}
+                        </ScrollView>
                     )}
                 </View>
             </ScrollView>
@@ -158,7 +201,8 @@ export default function MyNubaScreen() {
 
 // ─── Cards ──────────────────────────────────────────────────────────────────
 
-function HistoryCard({ item, isFirst, onPress }: { item: any; isFirst: boolean; onPress: () => void }) {
+const HistoryCard = forwardRef<any, { item: any; isFirst: boolean; onPress: () => void }>(
+    function HistoryCard({ item, isFirst, onPress }, ref) {
     const [focused, setFocused] = useState(false);
     const c = item.content || {};
     
@@ -180,6 +224,7 @@ function HistoryCard({ item, isFirst, onPress }: { item: any; isFirst: boolean; 
 
     return (
         <Pressable
+            ref={ref}
             focusable
             hasTVPreferredFocus={isFirst}
             onFocus={() => {
@@ -194,7 +239,7 @@ function HistoryCard({ item, isFirst, onPress }: { item: any; isFirst: boolean; 
                 focused && s.cardFocused
             ]}
         >
-            <View style={[focused ? { transform: [{ scale: 1.05 }] } : undefined, { flex: 1, width: '100%', borderRadius: scale(12), overflow: 'hidden' }]}>
+            <View style={{ flex: 1, width: '100%', borderRadius: scale(12), overflow: 'hidden' }}>
                 {imgUrl ? (
                     <Image source={resolveImageUrl(imgUrl)} style={StyleSheet.absoluteFill} contentFit="cover" />
                 ) : (
@@ -216,9 +261,10 @@ function HistoryCard({ item, isFirst, onPress }: { item: any; isFirst: boolean; 
             </View>
         </Pressable>
     );
-}
+});
 
-function PosterCard({ item, onPress }: { item: any; onPress: () => void }) {
+const PosterCard = forwardRef<any, { item: any; onPress: () => void }>(
+    function PosterCard({ item, onPress }, ref) {
     const [focused, setFocused] = useState(false);
     const c = item.content || item;
     
@@ -226,6 +272,7 @@ function PosterCard({ item, onPress }: { item: any; onPress: () => void }) {
 
     return (
         <Pressable
+            ref={ref}
             focusable
             onFocus={() => {
                 setFocused(true);
@@ -239,7 +286,7 @@ function PosterCard({ item, onPress }: { item: any; onPress: () => void }) {
                 focused && s.cardFocused
             ]}
         >
-            <View style={[focused ? { transform: [{ scale: 1.05 }] } : undefined, { flex: 1, width: '100%', borderRadius: scale(12), overflow: 'hidden' }]}>
+            <View style={{ flex: 1, width: '100%', borderRadius: scale(12), overflow: 'hidden' }}>
                 {poster ? (
                     <Image source={resolveImageUrl(poster)} style={StyleSheet.absoluteFill} contentFit="cover" />
                 ) : (
@@ -248,7 +295,7 @@ function PosterCard({ item, onPress }: { item: any; onPress: () => void }) {
             </View>
         </Pressable>
     );
-}
+});
 
 const s = StyleSheet.create({
     root: {
@@ -259,7 +306,6 @@ const s = StyleSheet.create({
         flex: 1,
     },
     scrollContent: {
-        paddingTop: scale(150),
         paddingBottom: scale(100),
     },
     section: {
@@ -274,8 +320,9 @@ const s = StyleSheet.create({
     },
     listContent: {
         paddingHorizontal: scale(56),
+        paddingTop: scale(15),
+        paddingBottom: scale(25),
         gap: scale(20),
-        alignItems: 'center',
     },
     card: {
         borderRadius: scale(12),
@@ -285,12 +332,8 @@ const s = StyleSheet.create({
     },
     cardFocused: {
         borderColor: '#00E5FF',
-        shadowColor: '#00E5FF',
-        shadowOffset: { width: 0, height: 10 },
-        shadowOpacity: 0.5,
-        shadowRadius: 20,
-        elevation: 10,
         zIndex: 10,
+        transform: [{ scale: 1.05 }],
     },
     cardGradient: {
         justifyContent: 'flex-end',

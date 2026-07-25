@@ -190,21 +190,7 @@ export default function HomeScreen() {
                 <TVHeroBanner slides={heroSlides} sectionLabel="Inicio" />
 
                 <View style={s.rowsContainer}>
-                    {user && cwCards.length > 0 && (
-                        <TVFilmRow
-                            title="Continuar Viendo"
-                            items={cwCards}
-                            variant="poster"
-                            onPressItem={(item) => {
-                                if (item.episodeId) {
-                                    router.push({ pathname: `/(tv)/watch/${item.id}` as any, params: { episodeId: item.episodeId } });
-                                } else {
-                                    router.push(`/(tv)/watch/${item.id}` as any);
-                                }
-                            }}
-                        />
-                    )}
-
+                   
                     {trendingCards.length > 0 && (
                         <TVFilmRow title="Tendencias" items={trendingCards} exploreRoute="/(tv)/explore" variant="poster" />
                     )}

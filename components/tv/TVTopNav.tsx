@@ -29,7 +29,7 @@ export default function TVTopNav() {
         if (item.key === 'search') return false; // Search is just an action
         const isHome = pathname === '/(tv)/home' || pathname === '/home' || pathname === '/';
         const isExplorePath = pathname === '/(tv)/explore' || pathname === '/explore';
-        const isMyNuba = pathname === '/(tv)/my-nuba';
+        const isMyNuba = pathname === '/(tv)/my-nuba' || pathname === '/my-nuba';
 
         if (item.key === 'home') return isHome;
         if (item.key === 'mynuba') return isMyNuba;
@@ -139,8 +139,7 @@ function UserBtn({ onPress }: any) {
 
 const s = StyleSheet.create({
     container: {
-        position: 'absolute',
-        top: 0, left: 0, right: 0,
+        marginBottom: -scale(90),
         height: scale(90),
         flexDirection: 'row',
         alignItems: 'center',
@@ -148,6 +147,7 @@ const s = StyleSheet.create({
         paddingHorizontal: scale(56),
         paddingTop: scale(16),
         zIndex: 9999,
+        backgroundColor: 'transparent',
     },
     leftArea: {
         width: scale(150),
@@ -159,22 +159,24 @@ const s = StyleSheet.create({
         height: scale(38),
     },
     centerNavWrapper: {
-        position: 'absolute',
-        left: 0, right: 0,
+        flex: 1,
         alignItems: 'center',
         justifyContent: 'center',
-        zIndex: -1,
     },
     centerNav: {
         flexDirection: 'row',
         alignItems: 'center',
         gap: scale(12),
-        paddingHorizontal: scale(10),
-        paddingVertical: scale(10),
+        paddingHorizontal: scale(8),
+        paddingVertical: scale(8),
+        backgroundColor: 'rgba(2, 4, 10, 0.35)', // más transparente
+        borderRadius: scale(40), // curvo
+        borderWidth: 1,
+        borderColor: 'rgba(255, 255, 255, 0.06)',
     },
     pill: {
         paddingHorizontal: scale(24),
-        paddingVertical: scale(12),
+        paddingVertical: scale(6),
         borderRadius: scale(30),
         borderWidth: 2,
         borderColor: 'transparent',
