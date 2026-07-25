@@ -36,16 +36,18 @@ function TVInputField({
     const [showPass, setShowPass] = useState(false);
     const internalRef = useRef<TextInput>(null);
     const inputRef = propRef || internalRef;
-    const hasFocusedOnce = useRef(false);
 
-    const scaleAnim = useSharedValue(1);
-
-    const animStyle = useAnimatedStyle(() => ({
-        transform: [{ scale: withTiming(scaleAnim.value, { duration: 150 }) }],
-    }));
+    useEffect(() => {
+        if (hasTVPreferredFocus) {
+            const timer = setTimeout(() => {
+                inputRef.current?.focus();
+            }, 300);
+            return () => clearTimeout(timer);
+        }
+    }, [hasTVPreferredFocus]);
 
     return (
-        <Animated.View style={[s.fieldRow, animStyle]}>
+        <View style={s.fieldRow}>
             <View style={s.inputContainer}>
                 <View style={s.inputIcon}>
                     <Icon size={scale(22)} color={focused ? '#00E5FF' : '#6B7280'} />
@@ -55,16 +57,8 @@ function TVInputField({
                     <TextInput
                         ref={inputRef}
                         focusable={true}
-                        hasTVPreferredFocus={hasTVPreferredFocus && !hasFocusedOnce.current}
-                        onFocus={() => {
-                            hasFocusedOnce.current = true;
-                            setFocused(true);
-                            scaleAnim.value = 1.04;
-                        }}
-                        onBlur={() => {
-                            setFocused(false);
-                            scaleAnim.value = 1;
-                        }}
+                        onFocus={() => setFocused(true)}
+                        onBlur={() => setFocused(false)}
                         value={value}
                         onChangeText={onChange}
                         secureTextEntry={secureText && !showPass}
@@ -92,7 +86,7 @@ function TVInputField({
                     </Pressable>
                 )}
             </View>
-        </Animated.View>
+        </View>
     );
 }
 
