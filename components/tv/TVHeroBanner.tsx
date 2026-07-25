@@ -44,7 +44,7 @@ const PlayButton = React.forwardRef<View, { item: Slide; onPress: () => void; ne
             ref={ref as any}
             focusable
             hasTVPreferredFocus
-            nextFocusDown={nextFocusDown ?? undefined}
+            {...({ nextFocusDown: nextFocusDown ?? undefined } as any)}
             onFocus={() => setFocused(true)}
             onBlur={() => setFocused(false)}
             onPress={isUpcoming ? undefined : onPress}
@@ -75,7 +75,7 @@ const AddButton = React.forwardRef<View, { onPress: () => void; nextFocusDown?: 
         <Pressable
             ref={ref as any}
             focusable
-            nextFocusDown={nextFocusDown ?? undefined}
+            {...({ nextFocusDown: nextFocusDown ?? undefined } as any)}
             onFocus={() => setFocused(true)}
             onBlur={() => setFocused(false)}
             onPress={onPress}

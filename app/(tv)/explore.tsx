@@ -149,7 +149,26 @@ function FilterTabButton({ label, isActive, onPress }: { label: string; isActive
 
 // ─── Main Screen ───────────────────────────────────────────────────────────────
 export default function ExploreScreen() {
-    useDoubleBackExit();
+    const catScrollRef = useRef<ScrollView>(null);
+    const gridScrollRef = useRef<FlatList>(null);
+    const isScrolledRef = useRef(false);
+
+    useDoubleBackExit(useCallback(() => {
+        if (isScrolledRef.current) {
+            if (catScrollRef.current) {
+                catScrollRef.current.scrollTo({ y: 0, animated: true });
+                isScrolledRef.current = false;
+                return true;
+            }
+            if (gridScrollRef.current) {
+                gridScrollRef.current.scrollToOffset({ offset: 0, animated: true });
+                isScrolledRef.current = false;
+                return true;
+            }
+        }
+        return false;
+    }, []));
+
     const router = useRouter();
     const params = useLocalSearchParams();
     const urlTypeParam = (params.type as string) || '';
@@ -490,7 +509,7 @@ export default function ExploreScreen() {
 
     const renderHeader = useCallback(() => (
         <View style={s.headerContainer}>
-         
+            <TVTopNav />
 
             {/* Search & Tabs */}
             <View style={s.searchRow}>
@@ -569,8 +588,13 @@ export default function ExploreScreen() {
             <View style={s.root}>
                 <TVCosmicBackground />
                 <ScrollView 
+                    ref={catScrollRef}
                     showsVerticalScrollIndicator={false} 
                     contentContainerStyle={{ paddingBottom: scale(100) }}
+                    onScroll={(e) => {
+                        isScrolledRef.current = (e.nativeEvent.contentOffset.y > 60);
+                    }}
+                    scrollEventThrottle={16}
                 >
                     <TVTopNav />
                     {catHeroSlides.length > 0 && (
@@ -615,11 +639,11 @@ export default function ExploreScreen() {
     return (
         <View style={s.root}>
             <TVCosmicBackground />
-            <TVTopNav />
 
             {/* ═══ MAIN CONTENT (no banner here) ══════════════════════ */}
             <View style={s.content}>
                 <FlatList
+                    ref={gridScrollRef}
                     data={items}
                     renderItem={renderItem}
                     keyExtractor={(item) => String(item?.id || Math.random())}
@@ -628,6 +652,10 @@ export default function ExploreScreen() {
                     showsVerticalScrollIndicator={false}
                     contentContainerStyle={[s.grid, { paddingHorizontal: DYNAMIC_SIDE_PAD }]}
                     columnWrapperStyle={s.row}
+                    onScroll={(e) => {
+                        isScrolledRef.current = (e.nativeEvent.contentOffset.y > 60);
+                    }}
+                    scrollEventThrottle={16}
                     onEndReached={loadMore}
                     onEndReachedThreshold={0.6}
                     ListHeaderComponent={renderHeader()}

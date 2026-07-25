@@ -28,10 +28,20 @@ const SECTION_LABELS: Record<string, string> = {
 const HOME_CACHE_KEY = 'home-data';
 
 export default function HomeScreen() {
+    const scrollRef = useRef<ScrollView>(null);
+    const isScrolledRef = useRef(false);
+
+    useDoubleBackExit(useCallback(() => {
+        if (isScrolledRef.current && scrollRef.current) {
+            scrollRef.current.scrollTo({ y: 0, animated: true });
+            isScrolledRef.current = false;
+            return true;
+        }
+        return false;
+    }, []));
+
     const { user } = useAuth();
     const router = useRouter();
-    
-    useDoubleBackExit();
 
     const [data, setData] = useState<any>(null);
     const [continueWatching, setContinueWatching] = useState<any[]>([]);
@@ -40,27 +50,30 @@ export default function HomeScreen() {
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
 
-    const loadHome = useCallback(async (forceRefresh = false) => {
+    const loadHome = useCallback((forceRefresh = false) => {
+        setLoading(true);
+        setError(null);
         try {
-            setError(null);
-
-            const res = await cachedFetch(
+            cachedFetch(
                 HOME_CACHE_KEY,
                 () => fetchApi(API_ROUTES.HOMEPAGE.DATA),
                 // onUpdate: called when background revalidation finishes with fresh data
                 (fresh) => {
                     if (fresh?.success && fresh.data) setData(fresh.data);
                 },
-            );
-
-            if (res?.success && res.data) {
-                setData(res.data);
-            } else if (!res?.success) {
-                setError(res?.message || 'La respuesta del servidor no fue exitosa.');
-            }
+            ).then((res) => {
+                if (res?.success && res.data) {
+                    setData(res.data);
+                } else if (!res?.success) {
+                    setError(res?.message || 'La respuesta del servidor no fue exitosa.');
+                }
+            }).catch((e: any) => {
+                setError(`Error de conexión: ${e.message || e}`);
+            }).finally(() => {
+                setLoading(false);
+            });
         } catch (e: any) {
             setError(`Error de conexión: ${e.message || e}`);
-        } finally {
             setLoading(false);
         }
     }, []);
