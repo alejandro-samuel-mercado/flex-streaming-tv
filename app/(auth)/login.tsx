@@ -30,12 +30,13 @@ function TVInputField({
     returnKeyType?: any;
     onSubmitEditing?: () => void;
     placeholder?: string;
-    inputRef?: React.RefObject<TextInput>;
+    inputRef?: any;
 }) {
     const [focused, setFocused] = useState(false);
     const [showPass, setShowPass] = useState(false);
     const internalRef = useRef<TextInput>(null);
     const inputRef = propRef || internalRef;
+    const hasFocusedOnce = useRef(false);
 
     const scaleAnim = useSharedValue(1);
 
@@ -54,9 +55,16 @@ function TVInputField({
                     <TextInput
                         ref={inputRef}
                         focusable={true}
-                        hasTVPreferredFocus={hasTVPreferredFocus}
-                        onFocus={() => { setFocused(true); scaleAnim.value = 1.02; }}
-                        onBlur={() => { setFocused(false); scaleAnim.value = 1; }}
+                        hasTVPreferredFocus={hasTVPreferredFocus && !hasFocusedOnce.current}
+                        onFocus={() => {
+                            hasFocusedOnce.current = true;
+                            setFocused(true);
+                            scaleAnim.value = 1.04;
+                        }}
+                        onBlur={() => {
+                            setFocused(false);
+                            scaleAnim.value = 1;
+                        }}
                         value={value}
                         onChangeText={onChange}
                         secureTextEntry={secureText && !showPass}
@@ -335,7 +343,6 @@ const s = StyleSheet.create({
     inputBoxFocused: {
         backgroundColor: '#0A0F24',
         borderColor: '#FFFFFF',
-        transform: [{ scale: 1.04 }],
         elevation: 10,
     },
     textInput: {
