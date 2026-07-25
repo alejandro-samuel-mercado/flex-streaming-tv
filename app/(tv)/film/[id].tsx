@@ -220,33 +220,6 @@ export default function FilmDetailScreen() {
     const episodes = currentSeason?.episodes || [];
 
     useEffect(() => {
-        if (Platform.OS === 'web') return;
-        
-        const t = setTimeout(() => {
-            const epsCount = episodes.length;
-            epRefs.current = epRefs.current.slice(0, epsCount);
-
-            epRefs.current.forEach((refItem, index) => {
-                if (!refItem) return;
-                const currentId = safeFindNodeHandle(refItem);
-                if (!currentId) return;
-
-                const prevRef = epRefs.current[index - 1];
-                const nextRef = epRefs.current[index + 1];
-
-                const prevId = prevRef ? safeFindNodeHandle(prevRef) : currentId; // Loop to self if first
-                const nextId = nextRef ? safeFindNodeHandle(nextRef) : currentId; // Loop to self if last
-
-                refItem.setNativeProps?.({
-                    nextFocusLeft: prevId,
-                    nextFocusRight: nextId,
-                });
-            });
-        }, 250);
-        return () => clearTimeout(t);
-    }, [episodes.length, selectedSeason]);
-
-    useEffect(() => {
         const load = async () => {
             try {
                 const json = await fetchApi(`${API_ROUTES.CONTENT.BASE}/${id}`);
@@ -453,46 +426,50 @@ export default function FilmDetailScreen() {
 
                         {/* Season Tabs */}
                         {content.seasons.length > 1 && (
-                            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={s.seasonRow} contentContainerStyle={{ gap: 12 }}>
-                                {content.seasons.map((se: any) => (
-                                    <SeasonTab
-                                        key={se.id}
-                                        label={`Temporada ${se.number}`}
-                                        isActive={selectedSeason === se.number}
-                                        onPress={() => setSelectedSeason(se.number)}
-                                    />
-                                ))}
-                            </ScrollView>
+                            <TVFocusGuide trapFocusLeft trapFocusRight style={{ flexDirection: 'row' }}>
+                                <ScrollView horizontal showsHorizontalScrollIndicator={false} style={s.seasonRow} contentContainerStyle={{ gap: 12 }}>
+                                    {content.seasons.map((se: any) => (
+                                        <SeasonTab
+                                            key={se.id}
+                                            label={`Temporada ${se.number}`}
+                                            isActive={selectedSeason === se.number}
+                                            onPress={() => setSelectedSeason(se.number)}
+                                        />
+                                    ))}
+                                </ScrollView>
+                            </TVFocusGuide>
                         )}
 
                         {/* Episodes Horizontal Scroll */}
-                        <ScrollView
-                            horizontal
-                            showsHorizontalScrollIndicator={false}
-                            contentContainerStyle={{ gap: 20, paddingTop: scale(16), paddingBottom: scale(16) }}
-                        >
-                            {(() => {
-                                const contentBackdrop = content.thumbnails?.find((t: any) => t.type === 'BACKDROP')?.url;
-                                const contentPoster = content.thumbnails?.find((t: any) => t.type === 'POSTER')?.url;
-                                return episodes.map((ep: any, index: number) => {
-                                    return (
-                                        <EpisodeCard
-                                            key={ep.id}
-                                            ref={(el) => { epRefs.current[index] = el; }}
-                                            ep={ep}
-                                            index={index}
-                                            contentId={id!}
-                                            contentBackdrop={contentBackdrop}
-                                            contentPoster={contentPoster}
-                                            onPress={() => {
-                                                if (!user) { router.push('/(auth)/login'); return; }
-                                                router.push(`/(tv)/watch/${id}?episodeId=${ep.id}` as any);
-                                            }}
-                                        />
-                                    );
-                                });
-                            })()}
-                        </ScrollView>
+                        <TVFocusGuide trapFocusLeft trapFocusRight style={{ flexDirection: 'row' }}>
+                            <ScrollView
+                                horizontal
+                                showsHorizontalScrollIndicator={false}
+                                contentContainerStyle={{ gap: 20, paddingTop: scale(16), paddingBottom: scale(16) }}
+                            >
+                                {(() => {
+                                    const contentBackdrop = content.thumbnails?.find((t: any) => t.type === 'BACKDROP')?.url;
+                                    const contentPoster = content.thumbnails?.find((t: any) => t.type === 'POSTER')?.url;
+                                    return episodes.map((ep: any, index: number) => {
+                                        return (
+                                            <EpisodeCard
+                                                key={ep.id}
+                                                ref={(el) => { epRefs.current[index] = el; }}
+                                                ep={ep}
+                                                index={index}
+                                                contentId={id!}
+                                                contentBackdrop={contentBackdrop}
+                                                contentPoster={contentPoster}
+                                                onPress={() => {
+                                                    if (!user) { router.push('/(auth)/login'); return; }
+                                                    router.push(`/(tv)/watch/${id}?episodeId=${ep.id}` as any);
+                                                }}
+                                            />
+                                        );
+                                    });
+                                })()}
+                            </ScrollView>
+                        </TVFocusGuide>
                     </View>
                 )}
 
@@ -500,19 +477,21 @@ export default function FilmDetailScreen() {
                 {content.actors?.length > 0 && (
                     <View style={s.section}>
                         <Text style={s.sectionLabel}>REPARTO</Text>
-                        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 24, paddingBottom: 8 }}>
-                            {content.actors.slice(0, 12).map((a: any, i: number) => (
-                                <View key={i} style={s.actorCard}>
-                                    <Image
-                                        source={resolveImageUrl(a.actor?.photoUrl)}
-                                        style={s.actorImg}
-                                        contentFit="cover"
-                                    />
-                                    <Text style={s.actorName} numberOfLines={2}>{a.actor?.name}</Text>
-                                    {a.role && <Text style={s.actorRole} numberOfLines={1}>{a.role}</Text>}
-                                </View>
-                            ))}
-                        </ScrollView>
+                        <TVFocusGuide trapFocusLeft trapFocusRight style={{ flexDirection: 'row' }}>
+                            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 24, paddingBottom: 8 }}>
+                                {content.actors.slice(0, 12).map((a: any, i: number) => (
+                                    <View key={i} style={s.actorCard}>
+                                        <Image
+                                            source={resolveImageUrl(a.actor?.photoUrl)}
+                                            style={s.actorImg}
+                                            contentFit="cover"
+                                        />
+                                        <Text style={s.actorName} numberOfLines={2}>{a.actor?.name}</Text>
+                                        {a.role && <Text style={s.actorRole} numberOfLines={1}>{a.role}</Text>}
+                                    </View>
+                                ))}
+                            </ScrollView>
+                        </TVFocusGuide>
                     </View>
                 )}
 

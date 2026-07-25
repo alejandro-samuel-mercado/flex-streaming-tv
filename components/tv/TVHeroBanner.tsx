@@ -10,6 +10,8 @@ import { scale } from '../../lib/scale';
 import { Colors } from '../../theme/colors';
 
 const { width: SW, height: SH } = Dimensions.get('window');
+const TVFocusGuide = (require('react-native') as any).TVFocusGuideView ?? View;
+const TVPressable = Pressable as any;
 
 interface Slide {
     id: string;
@@ -95,16 +97,30 @@ const AddButton = React.forwardRef<View, { onPress: () => void; nextFocusDown?: 
 const ThumbnailCard = React.forwardRef<View, { 
     item: Slide; 
     isActive: boolean; 
+    isFirst?: boolean;
+    isLast?: boolean;
     onFocus: () => void; 
     onPress: () => void; 
 }>(({ 
     item, 
     isActive, 
+    isFirst,
+    isLast,
     onFocus, 
     onPress 
 }, ref) => {
     const scaleAnim = useSharedValue(1);
     const translateYAnim = useSharedValue(0);
+    const localRef = useRef<any>(null);
+    const [selfId, setSelfId] = useState<number | null>(null);
+
+    React.useImperativeHandle(ref, () => localRef.current);
+
+    useEffect(() => {
+        if (localRef.current) {
+            setSelfId(findNodeHandle(localRef.current));
+        }
+    }, []);
 
     useEffect(() => {
         if (isActive) {
@@ -124,9 +140,11 @@ const ThumbnailCard = React.forwardRef<View, {
     }));
 
     return (
-        <Pressable
-            ref={ref as any}
+        <TVPressable
+            ref={localRef}
             focusable
+            nextFocusLeft={isFirst ? (selfId ?? undefined) : undefined}
+            nextFocusRight={isLast ? (selfId ?? undefined) : undefined}
             onFocus={onFocus}
             onPress={onPress}
             style={s.thumbWrapper}
@@ -139,7 +157,7 @@ const ThumbnailCard = React.forwardRef<View, {
                 />
                 {!isActive && <View style={s.thumbOverlay} />}
             </Animated.View>
-        </Pressable>
+        </TVPressable>
     );
 });
 
@@ -301,45 +319,49 @@ function TVHeroBannerInner({ slides, sectionLabel, hideThumbnails, hidePlatforms
             {/* Thumbnail Navigation Row */}
             {!hideThumbnails && (
                 <View style={s.thumbsSection} onTouchStart={() => isInteracting.current = true} onTouchEnd={() => isInteracting.current = false}>
-                    <FlatList
-                        ref={flatListRef}
-                        data={slides}
-                        horizontal
-                        showsHorizontalScrollIndicator={false}
-                        keyExtractor={(it) => it.id}
-                        contentContainerStyle={s.thumbsListContainer}
-                        onScrollToIndexFailed={(info) => {
-                            setTimeout(() => {
-                                flatListRef.current?.scrollToIndex({ index: info.index, animated: true });
-                            }, 500);
-                        }}
-                        renderItem={({ item: slide, index }) => (
-                            <ThumbnailCard
-                                ref={index === 0 ? firstThumbRef : undefined}
-                                item={slide}
-                                isActive={index === focusedIndex}
-                                onFocus={() => {
-                                    isInteracting.current = true;
-                                    setFocusedIndex(index);
-                                    if (index === 0) {
-                                        flatListRef.current?.scrollToOffset({ offset: 0, animated: true });
-                                        setTimeout(() => {
+                    <TVFocusGuide trapFocusLeft trapFocusRight style={{ flexDirection: 'row' }}>
+                        <FlatList
+                            ref={flatListRef}
+                            data={slides}
+                            horizontal
+                            showsHorizontalScrollIndicator={false}
+                            keyExtractor={(it) => it.id}
+                            contentContainerStyle={s.thumbsListContainer}
+                            onScrollToIndexFailed={(info) => {
+                                setTimeout(() => {
+                                    flatListRef.current?.scrollToIndex({ index: info.index, animated: true });
+                                }, 500);
+                            }}
+                            renderItem={({ item: slide, index }) => (
+                                <ThumbnailCard
+                                    ref={index === 0 ? firstThumbRef : undefined}
+                                    item={slide}
+                                    isFirst={index === 0}
+                                    isLast={index === slides.length - 1}
+                                    isActive={index === focusedIndex}
+                                    onFocus={() => {
+                                        isInteracting.current = true;
+                                        setFocusedIndex(index);
+                                        if (index === 0) {
                                             flatListRef.current?.scrollToOffset({ offset: 0, animated: true });
-                                        }, 100);
-                                    } else {
-                                        flatListRef.current?.scrollToIndex({ index, animated: true, viewPosition: 0.5 });
-                                    }
-                                    // Resume auto-play after interaction stops
-                                    setTimeout(() => { isInteracting.current = false; }, 4000);
-                                }}
-                                onPress={() => {
-                                    setFocusedIndex(index);
-                                    setActiveIndex(index);
-                                    handlePlay();
-                                }}
-                            />
-                        )}
-                    />
+                                            setTimeout(() => {
+                                                flatListRef.current?.scrollToOffset({ offset: 0, animated: true });
+                                            }, 100);
+                                        } else {
+                                            flatListRef.current?.scrollToIndex({ index, animated: true, viewPosition: 0.5 });
+                                        }
+                                        // Resume auto-play after interaction stops
+                                        setTimeout(() => { isInteracting.current = false; }, 4000);
+                                    }}
+                                    onPress={() => {
+                                        setFocusedIndex(index);
+                                        setActiveIndex(index);
+                                        handlePlay();
+                                    }}
+                                />
+                            )}
+                        />
+                    </TVFocusGuide>
                 </View>
             )}
                 </View>

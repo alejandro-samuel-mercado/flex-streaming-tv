@@ -1,4 +1,4 @@
-import React, { memo, useState, useRef, useImperativeHandle, forwardRef } from 'react';
+import React, { memo, useState, useRef, useImperativeHandle, forwardRef, useEffect } from 'react';
 import { View, Text, StyleSheet, Pressable, findNodeHandle } from 'react-native';
 import { Image } from 'expo-image';
 import { useRouter } from 'expo-router';
@@ -22,6 +22,8 @@ interface TVFilmCardProps {
   variant?: 'poster' | 'landscape';
   hasTVPreferredFocus?: boolean;
   width?: number;
+  isFirst?: boolean;
+  isLast?: boolean;
   onFocus?: () => void;
   onPress?: () => void;
 }
@@ -32,13 +34,20 @@ interface TVFilmCardProps {
  */
 const TVFilmCardInner = forwardRef<View, TVFilmCardProps>(function TVFilmCardInner({
   id, title, posterUrl, backdropUrl, rating, year, type, progress, duration,
-  variant = 'poster', hasTVPreferredFocus, width: widthProp, onPress, onFocus,
+  variant = 'poster', hasTVPreferredFocus, width: widthProp, isFirst, isLast, onPress, onFocus,
 }, ref) {
   const router = useRouter();
   const [focused, setFocused] = useState(false);
   const pressableRef = useRef<any>(null);
+  const [selfId, setSelfId] = useState<number | null>(null);
 
   useImperativeHandle(ref, () => pressableRef.current);
+
+  useEffect(() => {
+    if (pressableRef.current) {
+      setSelfId(findNodeHandle(pressableRef.current));
+    }
+  }, []);
 
   const isLandscape = variant === 'landscape';
   const cardWidth = widthProp ?? (isLandscape ? scale(320) : TV.cardWidthPoster);
@@ -51,6 +60,8 @@ const TVFilmCardInner = forwardRef<View, TVFilmCardProps>(function TVFilmCardInn
         ref={pressableRef}
         focusable
         hasTVPreferredFocus={hasTVPreferredFocus}
+        nextFocusLeft={isFirst ? (selfId ?? undefined) : undefined}
+        nextFocusRight={isLast ? (selfId ?? undefined) : undefined}
         onFocus={() => {
           setFocused(true);
           onFocus?.();

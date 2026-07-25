@@ -1,4 +1,4 @@
-import React, { useRef, memo, useState, useLayoutEffect, forwardRef } from 'react';
+import React, { useRef, memo, useState, useLayoutEffect, forwardRef, useEffect } from 'react';
 import { View, Text, ScrollView, StyleSheet, Pressable, findNodeHandle, Platform } from 'react-native';
 import { ChevronRight } from 'lucide-react-native';
 import { useRouter } from 'expo-router';
@@ -8,6 +8,7 @@ import TVFilmCard from './TVFilmCard';
 import { scale } from '../../lib/scale';
 
 const TVPressable = Pressable as any;
+const TVFocusGuide = (require('react-native') as any).TVFocusGuideView ?? View;
 
 interface FilmItem {
   id: string;
@@ -37,13 +38,25 @@ interface TVFilmRowProps {
 const ViewMoreCard = forwardRef<any, { onPress: () => void; variant: 'poster' | 'landscape' }>(
   function ViewMoreCard({ onPress, variant }, ref) {
     const [focused, setFocused] = useState(false);
+    const localRef = useRef<any>(null);
+    const [selfId, setSelfId] = useState<number | null>(null);
+
+    React.useImperativeHandle(ref, () => localRef.current);
+
+    useEffect(() => {
+      if (localRef.current) {
+        setSelfId(findNodeHandle(localRef.current));
+      }
+    }, []);
+
     const isLandscape = variant === 'landscape';
     const cardWidth = isLandscape ? scale(320) : TV.cardWidthPoster;
     const cardHeight = isLandscape ? (cardWidth * 9 / 16) : (cardWidth * 1.5);
     return (
       <TVPressable
-        ref={ref}
+        ref={localRef}
         focusable
+        nextFocusRight={selfId ?? undefined}
         onFocus={() => setFocused(true)}
         onBlur={() => setFocused(false)}
         onPress={onPress}
@@ -68,22 +81,6 @@ function TVFilmRowInner({
 
   const hasViewMore = !!(onPressViewMore || (exploreRoute && items.length > 8));
 
-  // Imperatively set self-loop after every render — no state, no re-renders
-  useLayoutEffect(() => {
-    if (Platform.OS === 'web') return; // findNodeHandle / setNativeProps not available on web
-    const timer = setTimeout(() => {
-      if (firstRef.current) {
-        const id = findNodeHandle(firstRef.current);
-        if (id) firstRef.current.setNativeProps?.({ nextFocusLeft: id });
-      }
-      if (lastRef.current) {
-        const id = findNodeHandle(lastRef.current);
-        if (id) lastRef.current.setNativeProps?.({ nextFocusRight: id });
-      }
-    }, 200);
-    return () => clearTimeout(timer);
-  }, [items, hasViewMore]);
-
   if (!items || items.length === 0) return null;
 
   const totalCards = Math.min(items.length, 8);
@@ -97,54 +94,58 @@ function TVFilmRowInner({
       </View>
 
       {/* List */}
-      <ScrollView
-        ref={scrollRef as any}
-        horizontal
-        showsHorizontalScrollIndicator={false}
-        contentContainerStyle={[s.listContent, { gap: TV.rowItemGap }]}
-      >
-        {items.slice(0, 8).map((item, index) => {
-          const isFirst = index === 0;
-          const isLast = index === totalCards - 1 && !hasViewMore;
-          return (
-            <TVFilmCard
-              key={item.id}
-              ref={isFirst ? firstRef : isLast ? lastRef : undefined}
-              id={item.id}
-              title={item.title}
-              posterUrl={item.posterUrl}
-              backdropUrl={item.backdropUrl}
-              rating={item.rating}
-              year={item.year}
-              type={item.type}
-              progress={item.progress}
-              duration={item.duration}
-              variant={variant}
-              hasTVPreferredFocus={hasTVPreferredFocus && isFirst}
-              onFocus={isFirst ? () => {
-                scrollRef.current?.scrollTo({ x: 0, animated: true });
-                setTimeout(() => {
+      <TVFocusGuide trapFocusLeft trapFocusRight style={{ flexDirection: 'row' }}>
+        <ScrollView
+          ref={scrollRef as any}
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={[s.listContent, { gap: TV.rowItemGap }]}
+        >
+          {items.slice(0, 8).map((item, index) => {
+            const isFirst = index === 0;
+            const isLast = index === totalCards - 1 && !hasViewMore;
+            return (
+              <TVFilmCard
+                key={item.id}
+                ref={isFirst ? firstRef : isLast ? lastRef : undefined}
+                id={item.id}
+                title={item.title}
+                posterUrl={item.posterUrl}
+                backdropUrl={item.backdropUrl}
+                rating={item.rating}
+                year={item.year}
+                type={item.type}
+                progress={item.progress}
+                duration={item.duration}
+                variant={variant}
+                isFirst={isFirst}
+                isLast={isLast}
+                hasTVPreferredFocus={hasTVPreferredFocus && isFirst}
+                onFocus={isFirst ? () => {
                   scrollRef.current?.scrollTo({ x: 0, animated: true });
-                }, 100);
-                setTimeout(() => {
-                  scrollRef.current?.scrollTo({ x: 0, animated: false });
-                }, 250);
-              } : undefined}
-              onPress={onPressItem ? () => onPressItem(item) : undefined}
+                  setTimeout(() => {
+                    scrollRef.current?.scrollTo({ x: 0, animated: true });
+                  }, 100);
+                  setTimeout(() => {
+                    scrollRef.current?.scrollTo({ x: 0, animated: false });
+                  }, 250);
+                } : undefined}
+                onPress={onPressItem ? () => onPressItem(item) : undefined}
+              />
+            );
+          })}
+          {hasViewMore && (
+            <ViewMoreCard
+              ref={lastRef}
+              onPress={() => {
+                if (onPressViewMore) onPressViewMore();
+                else if (exploreRoute) router.push(exploreRoute as any);
+              }}
+              variant={variant}
             />
-          );
-        })}
-        {hasViewMore && (
-          <ViewMoreCard
-            ref={lastRef}
-            onPress={() => {
-              if (onPressViewMore) onPressViewMore();
-              else if (exploreRoute) router.push(exploreRoute as any);
-            }}
-            variant={variant}
-          />
-        )}
-      </ScrollView>
+          )}
+        </ScrollView>
+      </TVFocusGuide>
     </View>
   );
 }

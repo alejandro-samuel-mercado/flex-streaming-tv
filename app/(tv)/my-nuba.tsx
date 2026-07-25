@@ -17,6 +17,7 @@ const { width: SW } = Dimensions.get('window');
 const CARD_HEIGHT = scale(220);
 const CARD_WIDTH_POSTER = CARD_HEIGHT * (2 / 3);
 const CARD_WIDTH_BANNER = CARD_HEIGHT * (16 / 9);
+const TVFocusGuide = (require('react-native') as any).TVFocusGuideView ?? View;
 
 export default function MyNubaScreen() {
     const { user } = useAuth();
@@ -65,31 +66,6 @@ export default function MyNubaScreen() {
     const historyLastRef = useRef<any>(null);
     const favFirstRef = useRef<any>(null);
     const favLastRef = useRef<any>(null);
-
-    useLayoutEffect(() => {
-        if (Platform.OS === 'web') return;
-        const timer = setTimeout(() => {
-            // Lock History row
-            if (historyFirstRef.current) {
-                const id = findNodeHandle(historyFirstRef.current);
-                if (id) historyFirstRef.current.setNativeProps?.({ nextFocusLeft: id });
-            }
-            if (historyLastRef.current) {
-                const id = findNodeHandle(historyLastRef.current);
-                if (id) historyLastRef.current.setNativeProps?.({ nextFocusRight: id });
-            }
-            // Lock Favorites row
-            if (favFirstRef.current) {
-                const id = findNodeHandle(favFirstRef.current);
-                if (id) favFirstRef.current.setNativeProps?.({ nextFocusLeft: id });
-            }
-            if (favLastRef.current) {
-                const id = findNodeHandle(favLastRef.current);
-                if (id) favLastRef.current.setNativeProps?.({ nextFocusRight: id });
-            }
-        }, 300); // give it time to render
-        return () => clearTimeout(timer);
-    }, [history, favorites]);
 
     // Handle scroll to hide/show TopNav
     const handleScroll = (event: any) => {
@@ -142,26 +118,28 @@ export default function MyNubaScreen() {
                     ) : history.length === 0 ? (
                         <Text style={s.emptyText}>No tienes contenido reciente.</Text>
                     ) : (
-                        <ScrollView
-                            horizontal
-                            removeClippedSubviews={false}
-                            showsHorizontalScrollIndicator={false}
-                            contentContainerStyle={s.listContent}
-                        >
-                            {history.map((item, index) => {
-                                const isFirst = index === 0;
-                                const isLast = index === history.length - 1;
-                                return (
-                                    <HistoryCard 
-                                        key={item.content?.id || item.id || index.toString()}
-                                        ref={isFirst ? historyFirstRef : isLast ? historyLastRef : undefined}
-                                        item={item} 
-                                        isFirst={isFirst} 
-                                        onPress={() => handlePlay(item)} 
-                                    />
-                                );
-                            })}
-                        </ScrollView>
+                        <TVFocusGuide trapFocusLeft trapFocusRight style={{ flexDirection: 'row' }}>
+                            <ScrollView
+                                horizontal
+                                removeClippedSubviews={false}
+                                showsHorizontalScrollIndicator={false}
+                                contentContainerStyle={s.listContent}
+                            >
+                                {history.map((item, index) => {
+                                    const isFirst = index === 0;
+                                    const isLast = index === history.length - 1;
+                                    return (
+                                        <HistoryCard 
+                                            key={item.content?.id || item.id || index.toString()}
+                                            ref={isFirst ? historyFirstRef : isLast ? historyLastRef : undefined}
+                                            item={item} 
+                                            isFirst={isFirst} 
+                                            onPress={() => handlePlay(item)} 
+                                        />
+                                    );
+                                })}
+                            </ScrollView>
+                        </TVFocusGuide>
                     )}
                 </View>
 
@@ -173,25 +151,27 @@ export default function MyNubaScreen() {
                     ) : favorites.length === 0 ? (
                         <Text style={s.emptyText}>No has agregado títulos a tu lista.</Text>
                     ) : (
-                        <ScrollView
-                            horizontal
-                            removeClippedSubviews={false}
-                            showsHorizontalScrollIndicator={false}
-                            contentContainerStyle={s.listContent}
-                        >
-                            {favorites.map((item, index) => {
-                                const isFirst = index === 0;
-                                const isLast = index === favorites.length - 1;
-                                return (
-                                    <PosterCard 
-                                        key={item.content?.id || item.id || index.toString()}
-                                        ref={isFirst ? favFirstRef : isLast ? favLastRef : undefined}
-                                        item={item} 
-                                        onPress={() => handlePlay(item)} 
-                                    />
-                                );
-                            })}
-                        </ScrollView>
+                        <TVFocusGuide trapFocusLeft trapFocusRight style={{ flexDirection: 'row' }}>
+                            <ScrollView
+                                horizontal
+                                removeClippedSubviews={false}
+                                showsHorizontalScrollIndicator={false}
+                                contentContainerStyle={s.listContent}
+                            >
+                                {favorites.map((item, index) => {
+                                    const isFirst = index === 0;
+                                    const isLast = index === favorites.length - 1;
+                                    return (
+                                        <PosterCard 
+                                            key={item.content?.id || item.id || index.toString()}
+                                            ref={isFirst ? favFirstRef : isLast ? favLastRef : undefined}
+                                            item={item} 
+                                            onPress={() => handlePlay(item)} 
+                                        />
+                                    );
+                                })}
+                            </ScrollView>
+                        </TVFocusGuide>
                     )}
                 </View>
             </ScrollView>

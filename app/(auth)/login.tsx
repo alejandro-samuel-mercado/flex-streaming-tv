@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { View, Text, StyleSheet, TextInput, Pressable, ActivityIndicator, Dimensions, KeyboardAvoidingView, Platform, ScrollView, Keyboard, findNodeHandle } from 'react-native';
+import { View, Text, StyleSheet, TextInput, Pressable, ActivityIndicator, Dimensions, KeyboardAvoidingView, Platform, ScrollView, Keyboard } from 'react-native';
 import { Image } from 'expo-image';
 import { useRouter } from 'expo-router';
 import { useDoubleBackExit } from "../../hooks/useDoubleBackExit";
@@ -20,8 +20,7 @@ import TVCosmicBackground from '../../components/tv/TVCosmicBackground';
 function TVInputField({
     value, onChange, secureText, icon: Icon,
     hasTVPreferredFocus, returnKeyType, onSubmitEditing,
-    placeholder, inputRef: propRef,
-    nextFocusDown, nextFocusUp
+    placeholder, inputRef: propInputRef, blurOnSubmit
 }: {
     value: string;
     onChange: (v: string) => void;
@@ -31,38 +30,45 @@ function TVInputField({
     returnKeyType?: any;
     onSubmitEditing?: () => void;
     placeholder?: string;
-    inputRef?: any;
-    nextFocusDown?: number | null;
-    nextFocusUp?: number | null;
+    inputRef?: React.RefObject<TextInput | null>;
+    blurOnSubmit?: boolean;
 }) {
     const [focused, setFocused] = useState(false);
     const [showPass, setShowPass] = useState(false);
-    const internalRef = useRef<TextInput>(null);
-    const inputRef = propRef || internalRef;
+    const internalInputRef = useRef<TextInput>(null);
+    const inputRef = propInputRef || internalInputRef;
 
-    useEffect(() => {
-        if (hasTVPreferredFocus) {
-            const timer = setTimeout(() => {
-                inputRef.current?.focus();
-            }, 300);
-            return () => clearTimeout(timer);
-        }
-    }, [hasTVPreferredFocus]);
+    const scaleAnim = useSharedValue(1);
+
+    const animStyle = useAnimatedStyle(() => ({
+        transform: [{ scale: withTiming(scaleAnim.value, { duration: 150 }) }],
+    }));
 
     return (
-        <View style={s.fieldRow}>
+        <Animated.View style={[s.fieldRow, animStyle]}>
             <View style={s.inputContainer}>
                 <View style={s.inputIcon}>
                     <Icon size={scale(22)} color={focused ? '#00E5FF' : '#6B7280'} />
                 </View>
 
-                <View style={[s.inputBox, focused && s.inputBoxFocused]}>
+                <Pressable
+                    focusable={true}
+                    hasTVPreferredFocus={hasTVPreferredFocus}
+                    onFocus={() => {
+                        setFocused(true);
+                        scaleAnim.value = 1.02;
+                        inputRef.current?.focus();
+                    }}
+                    onPress={() => {
+                        inputRef.current?.focus();
+                    }}
+                    style={[s.inputBox, focused && s.inputBoxFocused]}
+                >
                     <TextInput
                         ref={inputRef}
                         focusable={true}
-                        {...({ nextFocusDown: nextFocusDown ?? undefined, nextFocusUp: nextFocusUp ?? undefined } as any)}
-                        onFocus={() => setFocused(true)}
-                        onBlur={() => setFocused(false)}
+                        onFocus={() => { setFocused(true); scaleAnim.value = 1.02; }}
+                        onBlur={() => { setFocused(false); scaleAnim.value = 1; }}
                         value={value}
                         onChangeText={onChange}
                         secureTextEntry={secureText && !showPass}
@@ -71,11 +77,11 @@ function TVInputField({
                         autoCorrect={false}
                         returnKeyType={returnKeyType || 'next'}
                         onSubmitEditing={onSubmitEditing}
-                        blurOnSubmit={false}
+                        blurOnSubmit={blurOnSubmit !== undefined ? blurOnSubmit : (returnKeyType === 'done' ? true : false)}
                         placeholder={placeholder}
                         placeholderTextColor="#4B5563"
                     />
-                </View>
+                </Pressable>
 
                 {secureText && (
                     <Pressable
@@ -90,12 +96,12 @@ function TVInputField({
                     </Pressable>
                 )}
             </View>
-        </View>
+        </Animated.View>
     );
 }
 
 // ─── Submit Button ─────────────────────────────────────────────────────────────
-const SubmitButton = React.forwardRef<View, { onPress: () => void; loading: boolean; nextFocusUp?: number | null }>(({ onPress, loading, nextFocusUp }, ref) => {
+function SubmitButton({ onPress, loading }: { onPress: () => void; loading: boolean }) {
     const [focused, setFocused] = useState(false);
     const scaleAnim = useSharedValue(1);
 
@@ -104,16 +110,15 @@ const SubmitButton = React.forwardRef<View, { onPress: () => void; loading: bool
     }));
 
     return (
-        <Pressable
-            ref={ref as any}
-            focusable
-            {...({ nextFocusUp: nextFocusUp ?? undefined } as any)}
-            onFocus={() => { setFocused(true); scaleAnim.value = 1.04; }}
-            onBlur={() => { setFocused(false); scaleAnim.value = 1; }}
-            onPress={onPress}
-            style={s.submitWrapper}
-        >
-            <Animated.View style={[s.submitBtn, focused && s.submitBtnFocused, animStyle]}>
+        <Animated.View style={[s.submitWrapper, animStyle]}>
+            <Pressable
+                focusable
+                onFocus={() => { setFocused(true); scaleAnim.value = 1.04; }}
+                onBlur={() => { setFocused(false); scaleAnim.value = 1; }}
+                onPress={onPress}
+                disabled={loading}
+                style={[s.submitBtn, focused && s.submitBtnFocused]}
+            >
                 <LinearGradient
                     colors={focused ? ['#4DEDFF', '#00E5FF'] : ['#00E5FF', '#0099AA']}
                     start={{ x: 0, y: 0 }}
@@ -125,10 +130,10 @@ const SubmitButton = React.forwardRef<View, { onPress: () => void; loading: bool
                         : <Text style={s.submitText}>INICIAR SESIÓN</Text>
                     }
                 </LinearGradient>
-            </Animated.View>
-        </Pressable>
+            </Pressable>
+        </Animated.View>
     );
-});
+}
 
 // ─── Main Screen ───────────────────────────────────────────────────────────────
 export default function LoginScreen() {
@@ -140,25 +145,7 @@ export default function LoginScreen() {
     const [password, setPassword] = useState('');
     const [loading, setLoading] = useState(false);
     const [errorMsg, setErrorMsg] = useState('');
-    const usernameRef = useRef<TextInput>(null);
     const passwordRef = useRef<TextInput>(null);
-    const submitRef = useRef<any>(null);
-    const [ids, setIds] = useState<{ uId?: number; pId?: number; sId?: number }>({});
-
-    useEffect(() => {
-        const timer = setTimeout(() => {
-            const uId = findNodeHandle(usernameRef.current);
-            const pId = findNodeHandle(passwordRef.current);
-            const sId = findNodeHandle(submitRef.current);
-            if (uId && pId && sId) {
-                setIds({ uId, pId, sId });
-                usernameRef.current?.setNativeProps?.({ nextFocusDown: pId });
-                passwordRef.current?.setNativeProps?.({ nextFocusUp: uId, nextFocusDown: sId });
-                submitRef.current?.setNativeProps?.({ nextFocusUp: pId });
-            }
-        }, 300);
-        return () => clearTimeout(timer);
-    }, []);
 
     const [kbVisible, setKbVisible] = useState(false);
     useEffect(() => {
@@ -224,28 +211,26 @@ export default function LoginScreen() {
                                 icon={User}
                                 hasTVPreferredFocus
                                 placeholder="Usuario"
+                                blurOnSubmit={false}
                                 onSubmitEditing={() => passwordRef.current?.focus()}
-                                inputRef={usernameRef}
-                                nextFocusDown={ids.pId}
                             />
                             <TVInputField
+                                inputRef={passwordRef}
                                 value={password}
                                 onChange={setPassword}
                                 secureText
                                 icon={Lock}
                                 placeholder="Contraseña"
                                 returnKeyType="done"
+                                blurOnSubmit={true}
                                 onSubmitEditing={handleLogin}
-                                inputRef={passwordRef}
-                                nextFocusUp={ids.uId}
-                                nextFocusDown={ids.sId}
                             />
                             {!!errorMsg && (
                                 <View style={s.errorContainer}>
                                     <Text style={s.errorText}>{errorMsg}</Text>
                                 </View>
                             )}
-                            <SubmitButton ref={submitRef} onPress={handleLogin} loading={loading} nextFocusUp={ids.pId} />
+                            <SubmitButton onPress={handleLogin} loading={loading} />
                         </View>
                     </View>
                 </View>
@@ -365,6 +350,7 @@ const s = StyleSheet.create({
     inputBoxFocused: {
         backgroundColor: '#0A0F24',
         borderColor: '#FFFFFF',
+        transform: [{ scale: 1.04 }],
         elevation: 10,
     },
     textInput: {

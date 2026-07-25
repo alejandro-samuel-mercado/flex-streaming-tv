@@ -22,6 +22,8 @@ import { Image } from 'expo-image';
 import { setPendingExploreFilters, consumePendingExploreFilters } from '../../lib/explore-filters';
 import { cachedFetch } from '../../lib/cache';
 
+const TVFocusGuide = (require('react-native') as any).TVFocusGuideView ?? View;
+
 const SECTION_LABELS: Record<string, string> = {
     '': 'Inicio',
     'MOVIE': 'Películas',
@@ -102,21 +104,23 @@ function FilterRow({ title, data, selectedValue, onSelect }: { title: string; da
     return (
         <View style={s.filterRow}>
             {!!title && <Text style={s.filterRowTitle}>{title}</Text>}
-            <FlatList
-                horizontal
-                data={data}
-                keyExtractor={item => item.value}
-                showsHorizontalScrollIndicator={false}
-                contentContainerStyle={s.filterRowList}
-                ItemSeparatorComponent={() => <View style={{ width: 12 }} />}
-                renderItem={({ item }) => (
-                    <FilterChip
-                        label={item.label}
-                        isSelected={item.value === selectedValue}
-                        onPress={() => onSelect(item.value)}
-                    />
-                )}
-            />
+            <TVFocusGuide trapFocusLeft trapFocusRight style={{ flexDirection: 'row' }}>
+                <FlatList
+                    horizontal
+                    data={data}
+                    keyExtractor={item => item.value}
+                    showsHorizontalScrollIndicator={false}
+                    contentContainerStyle={s.filterRowList}
+                    ItemSeparatorComponent={() => <View style={{ width: 12 }} />}
+                    renderItem={({ item }) => (
+                        <FilterChip
+                            label={item.label}
+                            isSelected={item.value === selectedValue}
+                            onPress={() => onSelect(item.value)}
+                        />
+                    )}
+                />
+            </TVFocusGuide>
         </View>
     );
 }
@@ -515,7 +519,11 @@ export default function ExploreScreen() {
             <View style={s.headerContainer}>
                 {/* Search & Tabs */}
                 <View style={s.searchRow}>
-                    <View
+                    <Pressable
+                        focusable
+                        onPress={() => searchInputRef.current?.focus()}
+                        onFocus={() => setSearchFocused(true)}
+                        onBlur={() => setSearchFocused(false)}
                         style={[
                             s.searchContainer,
                             searchFocused && s.searchContainerFocused
@@ -524,18 +532,16 @@ export default function ExploreScreen() {
                         <Search size={18} color={searchFocused ? Colors.black : Colors.textSecondary} style={{ marginRight: 14 }} />
                         <TextInput
                             ref={searchInputRef}
-                            focusable={true}
-                            onFocus={() => setSearchFocused(true)}
-                            onBlur={() => setSearchFocused(false)}
+                            focusable={false}
                             placeholder="Buscar películas, series..."
                             placeholderTextColor={searchFocused ? Colors.textSecondary : Colors.textMuted}
-                            style={[s.searchInput, { flex: 1, height: '100%' }, searchFocused && { color: Colors.black }]}
+                            style={[s.searchInput, searchFocused && { color: Colors.black }]}
                             value={searchQuery}
                             onChangeText={setSearchQuery}
                             onSubmitEditing={() => setAppliedSearch(searchQuery)}
                             returnKeyType="search"
                         />
-                    </View>
+                    </Pressable>
 
                     <FilterTabButton label={typeLabel!} isActive={activeTab === 'type' || currentType !== ''} onPress={() => setActiveTab(activeTab === 'type' ? null : 'type')} />
                     <FilterTabButton label={sortLabel} isActive={activeTab === 'sort' || sort !== 'recent'} onPress={() => setActiveTab(activeTab === 'sort' ? null : 'sort')} />
