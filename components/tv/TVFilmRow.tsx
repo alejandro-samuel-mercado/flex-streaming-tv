@@ -121,6 +121,15 @@ function TVFilmRowInner({
               duration={item.duration}
               variant={variant}
               hasTVPreferredFocus={hasTVPreferredFocus && isFirst}
+              onFocus={isFirst ? () => {
+                scrollRef.current?.scrollTo({ x: 0, animated: true });
+                setTimeout(() => {
+                  scrollRef.current?.scrollTo({ x: 0, animated: true });
+                }, 100);
+                setTimeout(() => {
+                  scrollRef.current?.scrollTo({ x: 0, animated: false });
+                }, 250);
+              } : undefined}
               onPress={onPressItem ? () => onPressItem(item) : undefined}
             />
           );

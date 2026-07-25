@@ -22,6 +22,7 @@ interface TVFilmCardProps {
   variant?: 'poster' | 'landscape';
   hasTVPreferredFocus?: boolean;
   width?: number;
+  onFocus?: () => void;
   onPress?: () => void;
 }
 
@@ -31,7 +32,7 @@ interface TVFilmCardProps {
  */
 const TVFilmCardInner = forwardRef<View, TVFilmCardProps>(function TVFilmCardInner({
   id, title, posterUrl, backdropUrl, rating, year, type, progress, duration,
-  variant = 'poster', hasTVPreferredFocus, width: widthProp, onPress,
+  variant = 'poster', hasTVPreferredFocus, width: widthProp, onPress, onFocus,
 }, ref) {
   const router = useRouter();
   const [focused, setFocused] = useState(false);
@@ -50,7 +51,10 @@ const TVFilmCardInner = forwardRef<View, TVFilmCardProps>(function TVFilmCardInn
         ref={pressableRef}
         focusable
         hasTVPreferredFocus={hasTVPreferredFocus}
-        onFocus={() => setFocused(true)}
+        onFocus={() => {
+          setFocused(true);
+          onFocus?.();
+        }}
         onBlur={() => setFocused(false)}
         onPress={onPress || (() => router.push(`/(tv)/film/${id}` as any))}
         style={[
