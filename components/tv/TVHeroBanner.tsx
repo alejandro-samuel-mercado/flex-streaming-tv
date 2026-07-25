@@ -256,7 +256,7 @@ function TVHeroBannerInner({ slides, sectionLabel, hideThumbnails, hidePlatforms
             />
 
             {/* Main Content */}
-            <View style={s.content}>
+            <View style={[s.content, hideThumbnails && { bottom: scale(270) }]}>
                 <Text style={s.title} numberOfLines={2}>
                     {getBalancedTitle(item.title)}
                 </Text>

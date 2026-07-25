@@ -603,7 +603,7 @@ export default function ExploreScreen() {
                     {catHeroSlides.length > 0 && (
                         <TVHeroBanner slides={catHeroSlides} sectionLabel={sectionLabel} hideThumbnails={true} hidePlatforms={true} />
                     )}
-                    <View style={{ marginTop: catHeroSlides.length > 0 ? -scale(100) : scale(32), zIndex: 10, paddingBottom: scale(60) }}>
+                    <View style={{ marginTop: catHeroSlides.length > 0 ? -scale(200) : scale(32), zIndex: 10, paddingBottom: scale(60) }}>
                         {/* "Todos" row */}
                         {catAllItems.length > 0 && (
                             <TVFilmRow
