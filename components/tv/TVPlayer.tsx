@@ -150,7 +150,7 @@ function TVMenuButton({ onPress, onFocus, icon: Icon, label, hasTVPreferredFocus
     );
 }
 
-const TVSidebarItem = React.forwardRef<any, any>(function TVSidebarItem({ onPress, style, children, hasTVPreferredFocus }, ref) {
+const TVSidebarItem = React.forwardRef<any, any>(function TVSidebarItem({ onPress, style, children, hasTVPreferredFocus, onLayout }: any, ref) {
     const [focused, setFocused] = useState(false);
     const localRef = useRef<any>(null);
     const [selfId, setSelfId] = useState<number | null>(null);
@@ -171,6 +171,7 @@ const TVSidebarItem = React.forwardRef<any, any>(function TVSidebarItem({ onPres
             onFocus={() => setFocused(true)}
             onBlur={() => setFocused(false)}
             onPress={onPress}
+            onLayout={onLayout}
             nextFocusLeft={selfId ?? undefined}
             style={[style, focused && s.itemFocusedWrapper]}
         >
@@ -361,6 +362,7 @@ export default function TVPlayer({ content, currentEpisode, streamData, videoUrl
     const [detectedAudioTracks, setDetectedAudioTracks] = useState<any[]>([]);
     const [detectedTextTracks, setDetectedTextTracks] = useState<any[]>([]);
     const firstSidebarItemRef = useRef<any>(null);
+    const sidebarScrollRef = useRef<any>(null);
 
     // Custom Subtitles Engine
     const [subtitleCues, setSubtitleCues] = useState<SubtitleCue[]>([]);
@@ -392,7 +394,7 @@ export default function TVPlayer({ content, currentEpisode, streamData, videoUrl
 
     useEffect(() => {
         if (activeMenu === 'episodes') {
-            const currentEpObj = allEpisodes.find((e: any) => e.id === episodeId);
+            const currentEpObj = allEpisodes.find((e: any) => String(e.id) === String(episodeId));
             const sNum = currentEpObj?.seasonNumber || content?.seasons?.[0]?.number || 1;
             setExpandedSeasons(prev => ({ ...prev, [sNum]: true }));
         }
@@ -404,7 +406,7 @@ export default function TVPlayer({ content, currentEpisode, streamData, videoUrl
 
     const currentIdx = useMemo(() => {
         if (!currentEpisode) return -1;
-        return allEpisodes.findIndex((e: any) => e.id === currentEpisode.id);
+        return allEpisodes.findIndex((e: any) => String(e.id) === String(currentEpisode.id));
     }, [allEpisodes, currentEpisode]);
 
     const subsList = useMemo(() => {
@@ -1215,10 +1217,10 @@ export default function TVPlayer({ content, currentEpisode, streamData, videoUrl
 
                         <TVFocusGuide destinations={[]} style={{ flex: 1 }}>
                             {activeMenu === 'episodes' && (
-                                <ScrollView contentContainerStyle={{ padding: scale(24), gap: scale(20) }}>
+                                <ScrollView ref={sidebarScrollRef} contentContainerStyle={{ padding: scale(24), gap: scale(20) }}>
                                     {seasonsWithEpisodes.map((se: any, sIdx: number) => {
                                         const isExpanded = !!expandedSeasons[se.number];
-                                        const isCurrentSeason = se.episodes.some((e: any) => e.id === episodeId);
+                                        const isCurrentSeason = se.episodes.some((e: any) => String(e.id) === String(episodeId));
                                         return (
                                             <View key={se.id || sIdx} style={{ gap: scale(12) }}>
                                                 {/* Season Header */}
@@ -1250,12 +1252,22 @@ export default function TVPlayer({ content, currentEpisode, streamData, videoUrl
                                                 {isExpanded && (
                                                     <View style={s.episodesContainer}>
                                                         {se.episodes.map((ep: any, epIdx: number) => {
-                                                            const isCurrentEp = episodeId === ep.id;
+                                                            const isCurrentEp = String(episodeId) === String(ep.id);
                                                             return (
                                                                 <TVSidebarItem
                                                                     key={ep.id || epIdx}
                                                                     ref={isCurrentEp ? firstSidebarItemRef : undefined}
                                                                     hasTVPreferredFocus={isCurrentEp}
+                                                                    onLayout={(e: any) => {
+                                                                        if (isCurrentEp && sidebarScrollRef.current) {
+                                                                            const y = e.nativeEvent.layout.y;
+                                                                            const offset = Math.max(0, (sIdx * scale(80)) + y - scale(150));
+                                                                            sidebarScrollRef.current.scrollTo({ y: offset, animated: false });
+                                                                            setTimeout(() => {
+                                                                                firstSidebarItemRef.current?.focus?.();
+                                                                            }, 150);
+                                                                        }
+                                                                    }}
                                                                     onPress={() => { setActiveMenu(null); router.replace(`/(tv)/watch/${contentId}?episodeId=${ep.id}` as any); }}
                                                                     style={[s.epItem, isCurrentEp && s.epItemActive]}
                                                                 >
