@@ -376,7 +376,7 @@ const s = StyleSheet.create({
     },
     content: {
         position: 'absolute',
-        bottom: scale(275), // Adjusted to sit cleanly above the new large 150x210 thumbnail cards
+        bottom: scale(175), // Adjusted to sit cleanly above the 95x110 thumbnails
         left: scale(56),
         right: '38%',
         maxWidth: scale(700), // Doesn't take so much width
@@ -476,13 +476,13 @@ const s = StyleSheet.create({
         bottom: 0, // Sit at the very bottom of the banner
         left: 0,
         right: 0,
-        height: scale(300), // Ample height (300px) so large cards and scale transforms never clip on top/bottom
+        height: scale(170), // Ample height so cards and scale transforms never clip on top/bottom
         justifyContent: 'center',
     },
     thumbsListContainer: {
-        paddingVertical: scale(40), // Generous vertical padding inside scroll view for scale transform
+        paddingVertical: scale(26), // Generous vertical padding inside scroll view for scale transform
         paddingHorizontal: scale(56),
-        gap: scale(14),
+        gap: scale(12),
         alignItems: 'center',
     },
     thumbWrapper: {
@@ -490,9 +490,9 @@ const s = StyleSheet.create({
         justifyContent: 'center',
     },
     thumbContainer: {
-        width: scale(150),
-        height: scale(210), // Much larger, beautiful rectangular movie poster dimensions
-        borderRadius: scale(14),
+        width: scale(95),
+        height: scale(110), // Slightly larger than square (almost square, un poco más en altura)
+        borderRadius: scale(12),
         overflow: 'hidden',
         borderWidth: 2.5,
         borderColor: 'rgba(255,255,255,0.2)',
