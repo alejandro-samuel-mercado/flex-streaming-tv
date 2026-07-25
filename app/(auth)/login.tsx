@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { View, Text, StyleSheet, TextInput, Pressable, ActivityIndicator, Dimensions, KeyboardAvoidingView, Platform, ScrollView, Keyboard } from 'react-native';
+import { View, Text, StyleSheet, TextInput, Pressable, ActivityIndicator, Dimensions, KeyboardAvoidingView, Platform, ScrollView, Keyboard, findNodeHandle } from 'react-native';
 import { Image } from 'expo-image';
 import { useRouter } from 'expo-router';
 import { useDoubleBackExit } from "../../hooks/useDoubleBackExit";
@@ -20,7 +20,8 @@ import TVCosmicBackground from '../../components/tv/TVCosmicBackground';
 function TVInputField({
     value, onChange, secureText, icon: Icon,
     hasTVPreferredFocus, returnKeyType, onSubmitEditing,
-    placeholder, inputRef: propRef
+    placeholder, inputRef: propRef,
+    nextFocusDown, nextFocusUp
 }: {
     value: string;
     onChange: (v: string) => void;
@@ -31,6 +32,8 @@ function TVInputField({
     onSubmitEditing?: () => void;
     placeholder?: string;
     inputRef?: any;
+    nextFocusDown?: number | null;
+    nextFocusUp?: number | null;
 }) {
     const [focused, setFocused] = useState(false);
     const [showPass, setShowPass] = useState(false);
@@ -57,6 +60,7 @@ function TVInputField({
                     <TextInput
                         ref={inputRef}
                         focusable={true}
+                        {...({ nextFocusDown: nextFocusDown ?? undefined, nextFocusUp: nextFocusUp ?? undefined } as any)}
                         onFocus={() => setFocused(true)}
                         onBlur={() => setFocused(false)}
                         value={value}
@@ -91,7 +95,7 @@ function TVInputField({
 }
 
 // ─── Submit Button ─────────────────────────────────────────────────────────────
-function SubmitButton({ onPress, loading }: { onPress: () => void; loading: boolean }) {
+const SubmitButton = React.forwardRef<View, { onPress: () => void; loading: boolean; nextFocusUp?: number | null }>(({ onPress, loading, nextFocusUp }, ref) => {
     const [focused, setFocused] = useState(false);
     const scaleAnim = useSharedValue(1);
 
@@ -101,7 +105,9 @@ function SubmitButton({ onPress, loading }: { onPress: () => void; loading: bool
 
     return (
         <Pressable
+            ref={ref as any}
             focusable
+            {...({ nextFocusUp: nextFocusUp ?? undefined } as any)}
             onFocus={() => { setFocused(true); scaleAnim.value = 1.04; }}
             onBlur={() => { setFocused(false); scaleAnim.value = 1; }}
             onPress={onPress}
@@ -122,7 +128,7 @@ function SubmitButton({ onPress, loading }: { onPress: () => void; loading: bool
             </Animated.View>
         </Pressable>
     );
-}
+});
 
 // ─── Main Screen ───────────────────────────────────────────────────────────────
 export default function LoginScreen() {
@@ -134,7 +140,25 @@ export default function LoginScreen() {
     const [password, setPassword] = useState('');
     const [loading, setLoading] = useState(false);
     const [errorMsg, setErrorMsg] = useState('');
+    const usernameRef = useRef<TextInput>(null);
     const passwordRef = useRef<TextInput>(null);
+    const submitRef = useRef<any>(null);
+    const [ids, setIds] = useState<{ uId?: number; pId?: number; sId?: number }>({});
+
+    useEffect(() => {
+        const timer = setTimeout(() => {
+            const uId = findNodeHandle(usernameRef.current);
+            const pId = findNodeHandle(passwordRef.current);
+            const sId = findNodeHandle(submitRef.current);
+            if (uId && pId && sId) {
+                setIds({ uId, pId, sId });
+                usernameRef.current?.setNativeProps?.({ nextFocusDown: pId });
+                passwordRef.current?.setNativeProps?.({ nextFocusUp: uId, nextFocusDown: sId });
+                submitRef.current?.setNativeProps?.({ nextFocusUp: pId });
+            }
+        }, 300);
+        return () => clearTimeout(timer);
+    }, []);
 
     const [kbVisible, setKbVisible] = useState(false);
     useEffect(() => {
@@ -201,6 +225,8 @@ export default function LoginScreen() {
                                 hasTVPreferredFocus
                                 placeholder="Usuario"
                                 onSubmitEditing={() => passwordRef.current?.focus()}
+                                inputRef={usernameRef}
+                                nextFocusDown={ids.pId}
                             />
                             <TVInputField
                                 value={password}
@@ -211,13 +237,15 @@ export default function LoginScreen() {
                                 returnKeyType="done"
                                 onSubmitEditing={handleLogin}
                                 inputRef={passwordRef}
+                                nextFocusUp={ids.uId}
+                                nextFocusDown={ids.sId}
                             />
                             {!!errorMsg && (
                                 <View style={s.errorContainer}>
                                     <Text style={s.errorText}>{errorMsg}</Text>
                                 </View>
                             )}
-                            <SubmitButton onPress={handleLogin} loading={loading} />
+                            <SubmitButton ref={submitRef} onPress={handleLogin} loading={loading} nextFocusUp={ids.pId} />
                         </View>
                     </View>
                 </View>
