@@ -31,13 +31,13 @@ interface Slide {
 interface TVHeroBannerProps {
     slides: Slide[];
     hasTVPreferredFocus?: boolean;
-    sectionLabel?: string;
     hideThumbnails?: boolean;
     hidePlatforms?: boolean;
+    onFocus?: () => void;
 }
 
 // ─── Play Button ──────────────────────────────────────────────────────────────
-const PlayButton = React.forwardRef<View, { item: Slide; onPress: () => void; nextFocusDown?: number | null }>(({ item, onPress, nextFocusDown }, ref) => {
+const PlayButton = React.forwardRef<View, { item: Slide; onPress: () => void; nextFocusDown?: number | null; onFocus?: () => void }>(({ item, onPress, nextFocusDown, onFocus }, ref) => {
     const [focused, setFocused] = useState(false);
     const isUpcoming = !!item.isUpcoming;
 
@@ -47,7 +47,10 @@ const PlayButton = React.forwardRef<View, { item: Slide; onPress: () => void; ne
             focusable
             hasTVPreferredFocus
             {...({ nextFocusDown: nextFocusDown ?? undefined } as any)}
-            onFocus={() => setFocused(true)}
+            onFocus={() => {
+                setFocused(true);
+                onFocus?.();
+            }}
             onBlur={() => setFocused(false)}
             onPress={isUpcoming ? undefined : onPress}
             style={[
@@ -70,7 +73,7 @@ const PlayButton = React.forwardRef<View, { item: Slide; onPress: () => void; ne
 });
 
 // ─── Add Button ───────────────────────────────────────────────────────────────
-const AddButton = React.forwardRef<View, { onPress: () => void; nextFocusDown?: number | null }>(({ onPress, nextFocusDown }, ref) => {
+const AddButton = React.forwardRef<View, { onPress: () => void; nextFocusDown?: number | null; onFocus?: () => void }>(({ onPress, nextFocusDown, onFocus }, ref) => {
     const [focused, setFocused] = useState(false);
 
     return (
@@ -78,7 +81,10 @@ const AddButton = React.forwardRef<View, { onPress: () => void; nextFocusDown?: 
             ref={ref as any}
             focusable
             {...({ nextFocusDown: nextFocusDown ?? undefined } as any)}
-            onFocus={() => setFocused(true)}
+            onFocus={() => {
+                setFocused(true);
+                onFocus?.();
+            }}
             onBlur={() => setFocused(false)}
             onPress={onPress}
             style={[
@@ -163,7 +169,7 @@ const ThumbnailCard = React.forwardRef<View, {
 
 
 // ─── Main Component ───────────────────────────────────────────────────────────
-function TVHeroBannerInner({ slides, sectionLabel, hideThumbnails, hidePlatforms }: TVHeroBannerProps) {
+function TVHeroBannerInner({ slides, hideThumbnails, hidePlatforms, onFocus }: TVHeroBannerProps) {
     const router = useRouter();
     const [focusedIndex, setFocusedIndex] = useState(0);
     const [activeIndex, setActiveIndex] = useState(0);
@@ -311,8 +317,8 @@ function TVHeroBannerInner({ slides, sectionLabel, hideThumbnails, hidePlatforms
                 )}
 
                 <View style={s.actionsRow}>
-                    <PlayButton ref={playBtnRef} item={item} onPress={handlePlay} nextFocusDown={firstThumbId} />
-                    <AddButton ref={addBtnRef} onPress={handleAdd} nextFocusDown={firstThumbId} />
+                    <PlayButton ref={playBtnRef} item={item} onPress={handlePlay} nextFocusDown={firstThumbId} onFocus={onFocus} />
+                    <AddButton ref={addBtnRef} onPress={handleAdd} nextFocusDown={firstThumbId} onFocus={onFocus} />
                 </View>
             </View>
 
@@ -340,6 +346,7 @@ function TVHeroBannerInner({ slides, sectionLabel, hideThumbnails, hidePlatforms
                                     isLast={index === slides.length - 1}
                                     isActive={index === focusedIndex}
                                     onFocus={() => {
+                                        onFocus?.();
                                         isInteracting.current = true;
                                         setFocusedIndex(index);
                                         if (index === 0) {

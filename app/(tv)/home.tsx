@@ -1,6 +1,6 @@
 import TVTopNav from "../../components/tv/TVTopNav";
 import React, { useEffect, useState, useCallback, useRef, useMemo } from 'react';
-import { View, ScrollView, StyleSheet, Text, FlatList, DeviceEventEmitter } from 'react-native';
+import { View, ScrollView, StyleSheet, Text, FlatList, DeviceEventEmitter, Dimensions } from 'react-native';
 import TVFocusable from '../../components/tv/TVFocusable';
 import { Colors } from '../../theme/colors';
 import TVHeroBanner from '../../components/tv/TVHeroBanner';
@@ -165,6 +165,16 @@ export default function HomeScreen() {
     const topSeriesCards = useMemo(() => mapToCards(data?.topSeries || []), [data?.topSeries, mapToCards]);
     const topMoviesCards = useMemo(() => mapToCards(data?.topMovies || []), [data?.topMovies, mapToCards]);
 
+    const lastFocusedSection = useRef<'hero' | 'rows'>('hero');
+
+    const handleFirstRowFocus = useCallback(() => {
+        if (lastFocusedSection.current !== 'rows') {
+            lastFocusedSection.current = 'rows';
+            const { height: SH } = Dimensions.get('window');
+            scrollRef.current?.scrollTo({ y: SH, animated: true });
+        }
+    }, []);
+
     // Only show skeleton on first load when there's no data yet
     if (loading && !data) {
         return (
@@ -192,36 +202,43 @@ export default function HomeScreen() {
 
     if (!data) return null;
 
+    const rowsToRender = [
+        { title: "Tendencias", items: trendingCards, exploreRoute: "/(tv)/explore" },
+        { title: "Estrenos", items: estrenosCards, exploreRoute: "/(tv)/explore?sort=recent" },
+        { title: "Últimos Agregados", items: recentCards, exploreRoute: "/(tv)/explore?sort=recent" },
+        { title: "Vistazo de Series", items: topSeriesCards, exploreRoute: "/(tv)/explore?type=SERIES" },
+        { title: "Vistazo de Películas", items: topMoviesCards, exploreRoute: "/(tv)/explore?type=MOVIE" }
+    ].filter(row => row.items.length > 0);
+
     return (
         <View style={s.container}>
             <TVCosmicBackground />
             <ScrollView 
+                ref={scrollRef}
                 showsVerticalScrollIndicator={false}
             >
                 <TVTopNav />
-                <TVHeroBanner slides={heroSlides} sectionLabel="Inicio" />
+                <TVHeroBanner 
+                    slides={heroSlides} 
+                    onFocus={() => {
+                        if (lastFocusedSection.current !== 'hero') {
+                            lastFocusedSection.current = 'hero';
+                            scrollRef.current?.scrollTo({ y: 0, animated: true });
+                        }
+                    }} 
+                />
 
                 <View style={s.rowsContainer}>
-                   
-                    {trendingCards.length > 0 && (
-                        <TVFilmRow title="Tendencias" items={trendingCards} exploreRoute="/(tv)/explore" variant="poster" />
-                    )}
-
-                    {estrenosCards.length > 0 && (
-                        <TVFilmRow title="Estrenos" items={estrenosCards} exploreRoute="/(tv)/explore?sort=recent" variant="poster" />
-                    )}
-
-                    {recentCards.length > 0 && (
-                        <TVFilmRow title="Últimos Agregados" items={recentCards} exploreRoute="/(tv)/explore?sort=recent" variant="poster" />
-                    )}
-
-                    {topSeriesCards.length > 0 && (
-                        <TVFilmRow title="Vistazo de Series" items={topSeriesCards} exploreRoute="/(tv)/explore?type=SERIES" variant="poster" />
-                    )}
-
-                    {topMoviesCards.length > 0 && (
-                        <TVFilmRow title="Vistazo de Películas" items={topMoviesCards} exploreRoute="/(tv)/explore?type=MOVIE" variant="poster" />
-                    )}
+                    {rowsToRender.map((row, index) => (
+                        <TVFilmRow 
+                            key={row.title}
+                            title={row.title} 
+                            items={row.items} 
+                            exploreRoute={row.exploreRoute} 
+                            variant="poster" 
+                            onFocus={index === 0 ? handleFirstRowFocus : undefined}
+                        />
+                    ))}
                 </View>
             </ScrollView>
         </View>

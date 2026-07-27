@@ -1010,13 +1010,12 @@ export default function TVPlayer({ content, currentEpisode, streamData, videoUrl
                     controls={false}
                     playInBackground={false}
                     bufferConfig={{
-                        // Increased buffer sizes to prevent mid-playback stops on slow servers.
-                        // ExoPlayer will pre-download up to 2 minutes ahead, providing a large
-                        // cushion against bandwidth drops and high server processing latency.
-                        minBufferMs: 30000,              // Start buffering ahead: 30s (was 15s)
-                        maxBufferMs: 120000,             // Max pre-buffer: 2 minutes (was 50s)
-                        bufferForPlaybackMs: 2500,       // Resume playback after: 2.5s of data
-                        bufferForPlaybackAfterRebufferMs: 8000, // After rebuffer stall: need 8s (was 5s)
+                        // Configuración optimizada para TV Box y Smart TVs con memoria limitada (1GB-2GB RAM).
+                        // Mantiene suficiente pre-carga para absorber oscilaciones sin agotar la RAM.
+                        minBufferMs: 15000,              // Búfer mínimo: 15s
+                        maxBufferMs: 35000,              // Búfer máximo óptimo: 35s
+                        bufferForPlaybackMs: 2000,       // Inicio rápido: 2s
+                        bufferForPlaybackAfterRebufferMs: 3000, // Recuperación rápida tras corte: 3s
                     }}
                 />
             )}

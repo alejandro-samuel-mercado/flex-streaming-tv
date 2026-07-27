@@ -32,11 +32,12 @@ interface TVFilmRowProps {
   hasTVPreferredFocus?: boolean;
   onPressItem?: (item: FilmItem) => void;
   onPressViewMore?: () => void;
+  onFocus?: () => void;
 }
 
 // ─── "Ver más" card ────────────────────────────────────────────────────────────
-const ViewMoreCard = forwardRef<any, { onPress: () => void; variant: 'poster' | 'landscape' }>(
-  function ViewMoreCard({ onPress, variant }, ref) {
+const ViewMoreCard = forwardRef<any, { onPress: () => void; variant: 'poster' | 'landscape'; onFocus?: () => void }>(
+  function ViewMoreCard({ onPress, variant, onFocus }, ref) {
     const [focused, setFocused] = useState(false);
     const localRef = useRef<any>(null);
     const [selfId, setSelfId] = useState<number | null>(null);
@@ -57,7 +58,10 @@ const ViewMoreCard = forwardRef<any, { onPress: () => void; variant: 'poster' | 
         ref={localRef}
         focusable
         nextFocusRight={selfId ?? undefined}
-        onFocus={() => setFocused(true)}
+        onFocus={() => {
+          setFocused(true);
+          onFocus?.();
+        }}
         onBlur={() => setFocused(false)}
         onPress={onPress}
         style={[s.viewMoreCard, { width: cardWidth, height: cardHeight }, focused && s.viewMoreFocused]}
@@ -71,7 +75,7 @@ const ViewMoreCard = forwardRef<any, { onPress: () => void; variant: 'poster' | 
 
 function TVFilmRowInner({
   title, subtitle, items, variant = 'poster',
-  exploreRoute, hasTVPreferredFocus, onPressItem, onPressViewMore,
+  exploreRoute, hasTVPreferredFocus, onPressItem, onPressViewMore, onFocus
 }: TVFilmRowProps) {
   const router = useRouter();
   const scrollRef = useRef<ScrollView>(null);
@@ -121,15 +125,18 @@ function TVFilmRowInner({
                 isFirst={isFirst}
                 isLast={isLast}
                 hasTVPreferredFocus={hasTVPreferredFocus && isFirst}
-                onFocus={isFirst ? () => {
-                  scrollRef.current?.scrollTo({ x: 0, animated: true });
-                  setTimeout(() => {
+                onFocus={() => {
+                  onFocus?.();
+                  if (isFirst) {
                     scrollRef.current?.scrollTo({ x: 0, animated: true });
-                  }, 100);
-                  setTimeout(() => {
-                    scrollRef.current?.scrollTo({ x: 0, animated: false });
-                  }, 250);
-                } : undefined}
+                    setTimeout(() => {
+                      scrollRef.current?.scrollTo({ x: 0, animated: true });
+                    }, 100);
+                    setTimeout(() => {
+                      scrollRef.current?.scrollTo({ x: 0, animated: false });
+                    }, 250);
+                  }
+                }}
                 onPress={onPressItem ? () => onPressItem(item) : undefined}
               />
             );
@@ -141,6 +148,7 @@ function TVFilmRowInner({
                 if (onPressViewMore) onPressViewMore();
                 else if (exploreRoute) router.push(exploreRoute as any);
               }}
+              onFocus={onFocus}
               variant={variant}
             />
           )}
