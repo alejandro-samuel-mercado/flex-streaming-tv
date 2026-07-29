@@ -1010,12 +1010,12 @@ export default function TVPlayer({ content, currentEpisode, streamData, videoUrl
                     controls={false}
                     playInBackground={false}
                     bufferConfig={{
-                        // Configuración optimizada para TV Box y Smart TVs con memoria limitada (1GB-2GB RAM).
-                        // Mantiene suficiente pre-carga para absorber oscilaciones sin agotar la RAM.
-                        minBufferMs: 15000,              // Búfer mínimo: 15s
-                        maxBufferMs: 35000,              // Búfer máximo óptimo: 35s
+                        // Configuración optimizada para evitar cortes (stuttering) en redes inestables
+                        // o videos de muy alto bitrate.
+                        minBufferMs: 30000,              // Búfer mínimo: 30s
+                        maxBufferMs: 120000,             // Búfer máximo: 120s
                         bufferForPlaybackMs: 2000,       // Inicio rápido: 2s
-                        bufferForPlaybackAfterRebufferMs: 3000, // Recuperación rápida tras corte: 3s
+                        bufferForPlaybackAfterRebufferMs: 5000, // Recuperación sólida tras corte: 5s
                     }}
                 />
             )}
