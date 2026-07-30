@@ -2,7 +2,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { useRouter } from 'expo-router';
 import { AlertCircle, Check, ChevronDown, ChevronRight, Languages, List, MessageSquare, Pause, Play, RefreshCw, RotateCcw, RotateCw, SkipBack, SkipForward } from 'lucide-react-native';
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { ActivityIndicator, BackHandler, FlatList, Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, BackHandler, Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import Animated, { runOnJS, useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated';
 import Video, { SelectedTrackType, TextTrackType, VideoRef } from 'react-native-video';
 import { fetchApi } from '../../lib/api-client';
@@ -658,33 +658,6 @@ export default function TVPlayer({ content, currentEpisode, streamData, videoUrl
             video.removeEventListener('error', onError);
         };
     }, [loading, activeVideoUrl]);
-
-    // Watchdog (Perro Guardián) para destrabar MediaCodec en Smart TVs Android
-    const watchdogRef = useRef({ lastTime: -1, stuckCount: 0 });
-    useEffect(() => {
-        const interval = setInterval(() => {
-            if (Platform.OS === 'web') return;
-            
-            if (isPlayingRef.current) {
-                const current = positionMillisRef.current;
-                if (current > 0 && current === watchdogRef.current.lastTime) {
-                    watchdogRef.current.stuckCount += 1;
-                    // 8 ticks de 500ms = 4 segundos atascado
-                    if (watchdogRef.current.stuckCount >= 8) {
-                        console.log('🐶 [Watchdog TV] ¡Atasco detectado! Forzando micro-salto...');
-                        if (videoRef.current) {
-                            videoRef.current.seek((current / 1000) + 0.1);
-                        }
-                        watchdogRef.current.stuckCount = 0;
-                    }
-                } else {
-                    watchdogRef.current.lastTime = current;
-                    watchdogRef.current.stuckCount = 0;
-                }
-            }
-        }, 500);
-        return () => clearInterval(interval);
-    }, []);
 
     // Sync HTML5 Video TextTracks (Web) when selectedSub changes
     useEffect(() => {
