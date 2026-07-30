@@ -659,6 +659,33 @@ export default function TVPlayer({ content, currentEpisode, streamData, videoUrl
         };
     }, [loading, activeVideoUrl]);
 
+    // Watchdog (Perro Guardián) para destrabar MediaCodec en Smart TVs Android
+    const watchdogRef = useRef({ lastTime: -1, stuckCount: 0 });
+    useEffect(() => {
+        const interval = setInterval(() => {
+            if (Platform.OS === 'web') return;
+            
+            if (isPlayingRef.current) {
+                const current = positionMillisRef.current;
+                if (current > 0 && current === watchdogRef.current.lastTime) {
+                    watchdogRef.current.stuckCount += 1;
+                    // 8 ticks de 500ms = 4 segundos atascado
+                    if (watchdogRef.current.stuckCount >= 8) {
+                        console.log('🐶 [Watchdog TV] ¡Atasco detectado! Forzando micro-salto...');
+                        if (videoRef.current) {
+                            videoRef.current.seek((current / 1000) + 0.1);
+                        }
+                        watchdogRef.current.stuckCount = 0;
+                    }
+                } else {
+                    watchdogRef.current.lastTime = current;
+                    watchdogRef.current.stuckCount = 0;
+                }
+            }
+        }, 500);
+        return () => clearInterval(interval);
+    }, []);
+
     // Sync HTML5 Video TextTracks (Web) when selectedSub changes
     useEffect(() => {
         if (Platform.OS !== 'web' || !webVideoRef.current) return;
